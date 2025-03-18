@@ -139,6 +139,36 @@ export async function getAuthenticatedUser(request: NextRequest) {
   try {
     console.log("사용자 인증 확인 시작");
     
+    // 개발 환경에서는 임시로 인증 우회
+    if (process.env.NODE_ENV === 'development') {
+      console.log("개발 환경에서 인증 우회");
+      // 기본 사용자 가져오기(첫 번째 사용자)
+      const devUser = await prisma.user.findFirst();
+      
+      if (devUser) {
+        console.log("개발용 사용자 찾음:", devUser.id);
+        return devUser;
+      }
+      
+      // 사용자가 없으면 임시 사용자 생성
+      if (!devUser) {
+        console.log("개발용 임시 사용자 생성");
+        try {
+          const tempUser = await prisma.user.create({
+            data: {
+              email: "dev@example.com",
+              password: await hashPassword("password"),
+              name: "Development User",
+              role: "USER"
+            }
+          });
+          return tempUser;
+        } catch (createError) {
+          console.error("임시 사용자 생성 실패:", createError);
+        }
+      }
+    }
+    
     // 모든 쿠키 로깅
     console.log("모든 쿠키:", request.cookies.getAll());
     

@@ -16,45 +16,81 @@ import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/contexts/auth-context"
 import { toast } from "sonner"
 
-// 임시 데이터 타입 정의
+// 티켓 시트 타입 정의
+interface SeatOption {
+  id: string;
+  label: string;
+  price: number;
+  available: boolean;
+}
+
+// 티켓 데이터 타입 정의
 interface TicketData {
-  id: number
-  title: string
-  artist: string
-  date: string
-  time: string
-  venue: string
-  price: number
-  originalPrice: number
-  image: string
-  status: string
-  successRate: string
-  remainingTime: string
-  description: string
-  seatOptions: {
-    id: number
-    name: string
-    price: number
-    available: boolean
-  }[]
+  id: number;
+  title: string;
+  artist: string;
+  date: string;
+  time: string;
+  venue: string;
+  price: number;
+  originalPrice: number;
+  image: string;
+  status: string;
+  successRate: number;
+  description?: string;
   seller: {
-    id: string | number
-    username: string
-    rating: number
-    reviewCount: number
-    responseRate: number
-    successfulSales: number
-    profileImage: string
-  }
-  // 추가: 게시물 작성자 정보
-  authorId?: number
+    id?: string;
+    name: string;
+    rating: number;
+    image: string;
+  };
+  seatOptions: SeatOption[];
 }
 
 export default function TicketCancellationDetail() {
   const params = useParams()
   const router = useRouter()
   const { user } = useAuth()
-  const [selectedSeats, setSelectedSeats] = useState<number[]>([])
+  const [ticketData, setTicketData] = useState<TicketData>({
+    id: 32,
+    title: "2024 아이유 콘서트 취켓팅",
+    artist: "아이유 (IU)",
+    date: "2024-05-15",
+    time: "19:00",
+    venue: "서울 올림픽 체조경기장",
+    price: 165000,
+    originalPrice: 165000,
+    image: "/placeholder.svg?height=400&width=800",
+    status: "FOR_SALE",
+    successRate: 80,
+    seller: {
+      name: "판매자",
+      rating: 4.5,
+      image: "",
+    },
+    seatOptions: [
+      {
+        id: "A",
+        label: "A구역",
+        price: 165000,
+        available: true,
+      },
+      {
+        id: "B",
+        label: "B구역", 
+        price: 145000,
+        available: true,
+      },
+      {
+        id: "C",
+        label: "C구역",
+        price: 125000,
+        available: true,
+      },
+    ]
+  })
+  const [loading, setLoading] = useState(true)
+  const [selectedSeats, setSelectedSeats] = useState<string[]>([])
   const [phoneNumber, setPhoneNumber] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
@@ -62,102 +98,127 @@ export default function TicketCancellationDetail() {
   const [accountPassword, setAccountPassword] = useState("")
   const [name, setName] = useState(user?.name || "")
   const [address, setAddress] = useState("")
-  const [ticketData, setTicketData] = useState<TicketData | null>(null)
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isAuthor, setIsAuthor] = useState(false)
 
-  // 게시물 데이터 가져오기
+  // 게시글 데이터 불러오기
   useEffect(() => {
-    const fetchPostData = async () => {
+    async function fetchPostData() {
       try {
-        const postId = params.id
-        const response = await fetch(`/api/posts/${postId}`)
+        setLoading(true);
+        const response = await fetch(`/api/posts/${params.id}`);
         
         if (!response.ok) {
-          throw new Error('게시물을 불러오는데 실패했습니다.')
+          throw new Error('게시글을 불러오는데 실패했습니다');
         }
         
-        const data = await response.json()
+        const data = await response.json();
+        console.log("불러온 게시글 데이터:", data);
         
-        if (data && data.post) {
-          // API 응답 데이터를 ticketData 형식에 맞게 변환
-          const post = data.post
+        if (!data || !data.post) {
+          throw new Error('데이터 형식이 올바르지 않습니다');
+        }
+        
+        const postData = data.post;
+        
+        // 날짜 및 가격 정보 파싱
+        let eventDate = '', eventTime = '', eventVenue = '', seatOptions = [];
+        let eventPrice = postData.price || 0;
+        
+        try {
+          // 게시글 내용에서 정보 파싱 (JSON 구조)
+          let contentObj;
           
-          // authorId를 숫자로 변환하여 비교
-          const postAuthorId = typeof post.authorId === 'string' ? parseInt(post.authorId) : post.authorId
-          
-          // 게시물 작성자와 현재 로그인한 사용자를 비교
-          if (user && user.id === postAuthorId) {
-            setIsAuthor(true)
+          if (typeof postData.content === 'string') {
+            try {
+              contentObj = JSON.parse(postData.content);
+              console.log("JSON 파싱 완료:", contentObj);
+            } catch (e) {
+              console.error('JSON 파싱 실패, 텍스트로 처리합니다:', e);
+              // 텍스트 모드 폴백 처리
+              const textContent = postData.content;
+              contentObj = { description: textContent };
+            }
+          } else {
+            contentObj = postData.content;
           }
           
-          // 티켓 데이터 포맷팅
-          setTicketData({
-            id: typeof post.id === 'string' ? parseInt(post.id) : post.id,
-            title: post.title,
-            artist: post.eventName || '정보 없음',
-            date: post.eventDate || '정보 없음',
-            time: post.eventTime || '정보 없음',
-            venue: post.venue || '정보 없음',
-            price: typeof post.ticketPrice === 'string' ? parseFloat(post.ticketPrice) : (post.ticketPrice || 0),
-            originalPrice: typeof post.ticketPrice === 'string' 
-              ? parseFloat(post.ticketPrice) * 1.1 
-              : (post.ticketPrice && post.ticketPrice * 1.1) || 0,
-            image: post.imageUrl || "/placeholder.svg?height=400&width=800",
-            status: "취켓팅 가능",
-            successRate: "98%",
-            remainingTime: "2일 13시간",
-            description: post.content || "",
-            seatOptions: [
-              { 
-                id: 1, 
-                name: "VIP석", 
-                price: typeof post.ticketPrice === 'string' 
-                  ? parseFloat(post.ticketPrice) * 1.5 
-                  : (post.ticketPrice ? post.ticketPrice * 1.5 : 165000), 
-                available: true 
-              },
-              { 
-                id: 2, 
-                name: "R석", 
-                price: typeof post.ticketPrice === 'string' 
-                  ? parseFloat(post.ticketPrice) * 1.3
-                  : (post.ticketPrice ? post.ticketPrice * 1.3 : 145000), 
-                available: true 
-              },
-              { 
-                id: 3, 
-                name: "S석", 
-                price: typeof post.ticketPrice === 'string' 
-                  ? parseFloat(post.ticketPrice) 
-                  : (post.ticketPrice || 110000), 
-                available: true 
-              },
-            ],
-            seller: {
-              id: post.author?.id || "unknown",
-              username: post.author?.name || "알 수 없음",
-              rating: 4.8,
-              reviewCount: 56,
-              responseRate: 98,
-              successfulSales: 124,
-              profileImage: "/placeholder.svg?height=100&width=100",
-            },
-            authorId: typeof post.authorId === 'string' ? parseInt(post.authorId) : post.authorId
-          })
+          // 구조화된 데이터 추출
+          eventDate = contentObj.date || '';
+          eventTime = contentObj.time || '';
+          eventVenue = contentObj.venue || '';
+          eventPrice = contentObj.price || eventPrice;
+          
+          // 중요: 구역 정보 처리
+          if (contentObj.sections && Array.isArray(contentObj.sections)) {
+            console.log("구역 정보 발견:", contentObj.sections);
+            seatOptions = contentObj.sections;
+          } else {
+            console.log("구역 정보가 없거나 유효하지 않습니다");
+            // 텍스트 기반 섹션 추출 시도 (이전 형식 지원)
+            const sectionPattern = /([^:]+): (\d+)원/g;
+            let match;
+            const extractedSections = [];
+            
+            while ((match = sectionPattern.exec(postData.content)) !== null) {
+              extractedSections.push({
+                id: extractedSections.length.toString(),
+                label: match[1].trim(),
+                price: parseInt(match[2].replace(/,/g, '')),
+                available: true
+              });
+            }
+            
+            if (extractedSections.length > 0) {
+              seatOptions = extractedSections;
+            }
+          }
+        } catch (e) {
+          console.error('게시글 내용 파싱 오류:', e);
+          // 파싱 실패시 원본 데이터 사용
         }
         
-        setLoading(false)
-      } catch (err) {
-        console.error('게시물 데이터 가져오기 실패:', err)
-        setError('게시물을 불러오는데 실패했습니다.')
-        setLoading(false)
+        console.log("최종 좌석 정보:", seatOptions);
+        
+        // 좌석 정보가 없을 경우 기본값 설정
+        if (!seatOptions || seatOptions.length === 0) {
+          seatOptions = [
+            { id: 'A', label: 'A구역', price: eventPrice, available: true },
+            { id: 'B', label: 'B구역', price: eventPrice, available: true },
+            { id: 'C', label: 'C구역', price: eventPrice, available: true }
+          ];
+        }
+        
+        setTicketData({
+          id: postData.id,
+          title: postData.title || '티켓 제목',
+          artist: postData.artist || '아티스트 정보',
+          date: eventDate || '날짜 정보 없음',
+          time: eventTime || '시간 정보 없음',
+          venue: eventVenue || '장소 정보 없음',
+          price: eventPrice,
+          originalPrice: eventPrice,
+          image: postData.image || '/default-ticket.jpg',
+          status: 'FOR_SALE',
+          successRate: 80,
+          seller: {
+            name: postData.author?.name || '판매자 정보 없음',
+            rating: 4.5,
+            image: postData.author?.image || '',
+          },
+          seatOptions: seatOptions
+        });
+        
+        setError(null);
+      } catch (error) {
+        console.error('게시글 조회 에러:', error);
+        setError(error instanceof Error ? error.message : '게시글을 불러오는데 실패했습니다');
+      } finally {
+        setLoading(false);
       }
     }
     
-    fetchPostData()
-  }, [params.id, user])
+    fetchPostData();
+  }, [params.id]);
 
   // 로그인 상태가 변경되면 이름 필드 업데이트
   useEffect(() => {
@@ -177,7 +238,7 @@ export default function TicketCancellationDetail() {
     }
   }, [isSuccess])
 
-  const toggleSeatSelection = (seatId: number) => {
+  const toggleSeatSelection = (seatId: string) => {
     setSelectedSeats((prev) => (prev.includes(seatId) ? prev.filter((id) => id !== seatId) : [...prev, seatId]))
   }
 
@@ -187,12 +248,6 @@ export default function TicketCancellationDetail() {
     if (!user) {
       toast.error("로그인이 필요한 서비스입니다.")
       router.push("/login")
-      return
-    }
-    
-    // 자신의 게시물 구매 방지
-    if (isAuthor) {
-      toast.error("본인이 작성한 게시물은 신청할 수 없습니다.")
       return
     }
 
@@ -215,30 +270,29 @@ export default function TicketCancellationDetail() {
     }, 1500)
   }
 
+  // 로딩 중 표시
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mx-auto mb-4"></div>
-          <p>데이터를 불러오는 중입니다...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
-    )
+    );
   }
 
-  if (error || !ticketData) {
+  // 데이터가 없는 경우
+  if (!ticketData) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden p-8">
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center p-4">
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h1 className="text-xl font-bold mb-2">오류가 발생했습니다</h1>
-          <p className="text-gray-600 mb-4">{error || '게시물을 불러오는데 실패했습니다.'}</p>
+          <h2 className="text-xl font-semibold mb-2">게시글을 찾을 수 없습니다</h2>
+          <p className="text-gray-600 mb-4">요청하신 게시글이 존재하지 않거나 삭제되었습니다.</p>
           <Link href="/ticket-cancellation">
-            <Button className="w-full">목록으로 돌아가기</Button>
+            <Button>목록으로 돌아가기</Button>
           </Link>
         </div>
       </div>
-    )
+    );
   }
 
   if (isSuccess) {
@@ -274,7 +328,7 @@ export default function TicketCancellationDetail() {
                 {selectedSeats
                   .map((seatId) => {
                     const seat = ticketData.seatOptions.find((s) => s.id === seatId)
-                    return seat ? `${seat.name} - ${seat.price.toLocaleString()}원` : ""
+                    return seat ? `${seat.label} - ${seat.price.toLocaleString()}원` : ""
                   })
                   .join(", ")}
               </p>
@@ -320,7 +374,7 @@ export default function TicketCancellationDetail() {
                   />
                   <div className="absolute top-4 right-4">
                     <div className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors border-transparent bg-green-500 text-white hover:bg-green-600">
-                      성공률 {ticketData.successRate}
+                      성공률 {ticketData.successRate}%
                     </div>
                   </div>
                 </div>
@@ -332,7 +386,7 @@ export default function TicketCancellationDetail() {
                     <p className="text-gray-600 mb-4">{ticketData.artist}</p>
                   </div>
                   <div className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors border-transparent bg-black/50 text-white backdrop-blur-sm">
-                    남은시간: {ticketData.remainingTime}
+                    남은시간: 2일 13시간
                   </div>
                 </div>
 
@@ -366,8 +420,8 @@ export default function TicketCancellationDetail() {
                   <div className="flex items-center gap-4">
                     <div className="relative w-10 h-10 rounded-full overflow-hidden bg-gray-200">
                       <Image
-                        src={ticketData.seller.profileImage || "/placeholder.svg"}
-                        alt={ticketData.seller.username}
+                        src={ticketData.seller.image || "/placeholder.svg"}
+                        alt={ticketData.seller.name}
                         fill
                         className="object-cover"
                       />
@@ -375,20 +429,19 @@ export default function TicketCancellationDetail() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <Link href={`/seller/${ticketData.seller.id}`} className="font-medium hover:text-blue-600">
-                          {ticketData.seller.username}
+                          {ticketData.seller.name}
                         </Link>
                         <div className="flex items-center text-yellow-500">
                           <Star className="h-4 w-4 fill-current" />
                           <span className="ml-1 text-sm">{ticketData.seller.rating}</span>
-                          <span className="text-gray-500 text-xs ml-1">({ticketData.seller.reviewCount})</span>
                         </div>
                       </div>
                       <p className="text-sm text-gray-500">
-                        거래 성사 {ticketData.seller.successfulSales}건 | 응답률 {ticketData.seller.responseRate}%
+                        거래 성사 124건 | 응답률 98%
                       </p>
                     </div>
                     <Link href={`/seller/${ticketData.seller.id}`}>
-                      <Button variant="outline" className="text-xs px-2 py-1">
+                      <Button variant="outline">
                         프로필 보기
                       </Button>
                     </Link>
@@ -401,22 +454,6 @@ export default function TicketCancellationDetail() {
 
             <div className="p-6">
               <h2 className="text-xl font-semibold mb-4">취켓팅 신청하기</h2>
-              
-              {/* 본인 게시물 경고 메시지 */}
-              {isAuthor && (
-                <div className="bg-red-50 p-4 rounded-lg mb-6">
-                  <div className="flex items-start">
-                    <AlertCircle className="h-5 w-5 text-red-500 mr-2 mt-0.5" />
-                    <div>
-                      <p className="text-red-700 font-medium">자신의 게시물입니다</p>
-                      <p className="text-sm text-red-600">
-                        본인이 작성한 게시물은 신청할 수 없습니다.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
               {!user && (
                 <div className="bg-yellow-50 p-4 rounded-lg mb-6">
                   <div className="flex items-start">
@@ -431,7 +468,6 @@ export default function TicketCancellationDetail() {
                   </div>
                 </div>
               )}
-              
               <div className="bg-blue-50 p-4 rounded-lg mb-6">
                 <div className="flex items-start">
                   <AlertCircle className="h-5 w-5 text-blue-500 mr-2 mt-0.5" />
@@ -447,20 +483,20 @@ export default function TicketCancellationDetail() {
               <form onSubmit={handleSubmit}>
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-gray-700 mb-2">좌석 선택(중복 선택 가능)</label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {ticketData.seatOptions.map((seat) => (
+                  <div 
+                    className="flex flex-wrap gap-2 mt-4 items-center"
+                  >
+                    {ticketData.seatOptions.map((seat: SeatOption) => (
                       <button
                         key={seat.id}
-                        type="button"
-                        className={`border rounded-lg p-4 text-center transition-colors ${
+                        className={`border rounded-md px-4 py-2 flex flex-col items-center transition-colors ${
                           selectedSeats.includes(seat.id)
-                            ? "border-[#0061FF] bg-blue-50"
-                            : "border-gray-200 hover:border-gray-300"
+                            ? "bg-blue-50 border-blue-500"
+                            : "hover:bg-gray-50"
                         }`}
                         onClick={() => toggleSeatSelection(seat.id)}
-                        disabled={isAuthor} // 자신의 게시물이면 선택 불가능하게 설정
                       >
-                        <p className="font-medium">{seat.name}</p>
+                        <p className="font-medium">{seat.label}</p>
                         <p className="text-gray-600">{seat.price.toLocaleString()}원</p>
                       </button>
                     ))}
@@ -479,7 +515,6 @@ export default function TicketCancellationDetail() {
                       value={accountId}
                       onChange={(e) => setAccountId(e.target.value)}
                       required
-                      disabled={isAuthor} // 자신의 게시물이면 입력 불가능하게 설정
                     />
                   </div>
 
@@ -494,7 +529,6 @@ export default function TicketCancellationDetail() {
                       value={accountPassword}
                       onChange={(e) => setAccountPassword(e.target.value)}
                       required
-                      disabled={isAuthor} // 자신의 게시물이면 입력 불가능하게 설정
                     />
                     <p className="text-sm text-gray-500 mt-1">예매 사이트에서 사용하는 계정 정보를 입력해주세요.</p>
                   </div>
@@ -510,7 +544,6 @@ export default function TicketCancellationDetail() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       required
-                      disabled={isAuthor} // 자신의 게시물이면 입력 불가능하게 설정
                     />
                   </div>
 
@@ -525,7 +558,6 @@ export default function TicketCancellationDetail() {
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
                       required
-                      disabled={isAuthor} // 자신의 게시물이면 입력 불가능하게 설정
                     />
                   </div>
 
@@ -540,24 +572,28 @@ export default function TicketCancellationDetail() {
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
                       required
-                      disabled={isAuthor} // 자신의 게시물이면 입력 불가능하게 설정
                     />
                     <p className="text-sm text-gray-500 mt-1">취소표 발생 시 알림을 받을 연락처를 입력해주세요.</p>
                   </div>
                 </div>
 
-                <Button 
-                  type="submit" 
-                  className="w-full bg-[#0061FF] hover:bg-[#0052D6]" 
-                  disabled={isSubmitting || isAuthor} // 자신의 게시물이면 버튼 비활성화
-                >
-                  {isSubmitting ? "처리 중..." : isAuthor ? "본인 게시물은 신청 불가" : "취켓팅 신청하기"}
+                <Button type="submit" className="w-full bg-[#0061FF] hover:bg-[#0052D6]" disabled={isSubmitting}>
+                  {isSubmitting ? "처리 중..." : "취켓팅 신청하기"}
                 </Button>
               </form>
             </div>
           </div>
         </div>
       </main>
+
+      <div className="mt-8">
+        <Button 
+          variant="outline"
+          onClick={() => router.push("/ticket-cancellation")}
+        >
+          목록으로 돌아가기
+        </Button>
+      </div>
     </div>
   )
 }

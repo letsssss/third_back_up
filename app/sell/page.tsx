@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Search } from "lucide-react"
+import { ArrowLeft } from 'lucide-react'
 import { useToast } from "@/components/ui/use-toast"
 
 import { Button } from "@/components/ui/button"
@@ -51,54 +51,26 @@ const concertData: Concert[] = [
 
 export default function SellPage() {
   const router = useRouter()
-  const [searchTerm, setSearchTerm] = useState("")
-  const [searchResults, setSearchResults] = useState<Concert[]>([])
-  const [selectedConcert, setSelectedConcert] = useState<Concert | null>(null)
-  const [customConcert, setCustomConcert] = useState<CustomConcert>({
-    title: "",
-    date: "",
-    venue: ""
-  })
+  const [concertTitle, setConcertTitle] = useState("")
+  // 날짜의 초기값을 오늘 날짜로 설정
+  const today = new Date().toISOString().split("T")[0] // YYYY-MM-DD 형식
+  const [concertDates, setConcertDates] = useState<Array<{ date: string }>>([{ date: today }])
+  const [concertVenue, setConcertVenue] = useState("")
+  const [concertTime, setConcertTime] = useState("")
   const [quantity, setQuantity] = useState("1")
   const [seatInfo, setSeatInfo] = useState("")
   const [price, setPrice] = useState("")
   const [ticketDescription, setTicketDescription] = useState("")
   const [isConsecutiveSeats, setIsConsecutiveSeats] = useState(false)
-  const [sections, setSections] = useState<Section[]>([{ name: "", price: "" }])
-  const [formErrors, setFormErrors] = useState<FormErrors>({})
+  const [sections, setSections] = useState<Array<{ id: number; name: string; price: string }>>([
+    { id: 1, name: "", price: "" }
+  ])
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const { toast } = useToast()
-
-  useEffect(() => {
-    if (searchTerm.length > 0) {
-      const results = concertData.filter((concert) => concert.title.toLowerCase().includes(searchTerm.toLowerCase()))
-      setSearchResults(results)
-    } else {
-      setSearchResults([])
-    }
-  }, [searchTerm])
-
-  const handleConcertSelect = (concert: Concert) => {
-    setSelectedConcert(concert)
-    setCustomConcert({
-      title: concert.title,
-      date: concert.date,
-      venue: concert.venue
-    })
-    setSearchTerm("")
-    setSearchResults([])
-  }
-
-  const updateCustomConcert = (field: keyof CustomConcert, value: string) => {
-    setCustomConcert(prev => ({
-      ...prev,
-      [field]: value
-    }))
-    // 커스텀 공연 정보가 변경되면 선택된 공연 정보를 제거
-    setSelectedConcert(null)
-  }
+  const [selectedSeats, setSelectedSeats] = useState<number[]>([])
 
   const addSection = () => {
-    setSections([...sections, { name: "", price: "" }])
+    setSections([...sections, { id: sections.length + 1, name: "", price: "" }])
   }
 
   const removeSection = (index: number) => {
@@ -119,16 +91,39 @@ export default function SellPage() {
     setSections(newSections)
   }
 
-  const validateForm = () => {
-    const errors: FormErrors = {}
+  // 날짜 관련 함수 추가
+  const addDate = () => {
+    setConcertDates([...concertDates, { date: today }])
+  }
 
-    if (!customConcert.title) {
+  const removeDate = (index: number) => {
+    const newDates = [...concertDates]
+    newDates.splice(index, 1)
+    setConcertDates(newDates)
+  }
+
+  const updateDate = (index: number, date: string) => {
+    const newDates = [...concertDates]
+    newDates[index].date = date
+    setConcertDates(newDates)
+  }
+
+  const toggleSeatSelection = (seatId: number) => {
+    setSelectedSeats((prev) => (prev.includes(seatId) ? prev.filter((id) => id !== seatId) : [...prev, seatId]))
+  }
+
+  const validateForm = () => {
+    const errors: Record<string, string> = {}
+
+    if (!concertTitle) {
       errors.concertTitle = "공연 제목을 입력해주세요"
     }
 
-    if (!customConcert.date) {
-      errors.concertDate = "공연 날짜를 입력해주세요"
-    }
+    concertDates.forEach((dateObj, index) => {
+      if (!dateObj.date) {
+        errors[`date_${index}`] = "공연 날짜를 입력해주세요"
+      }
+    })
 
     if (!ticketDescription) {
       errors.description = "티켓 상세설명을 입력해주세요"
@@ -144,10 +139,7 @@ export default function SellPage() {
     })
 
     setFormErrors(errors)
-    
-    // 디버깅을 위해 항상 true를 반환합니다. 실제 운영 환경에서는 아래 주석을 해제하세요.
-    return true
-    // return Object.keys(errors).length === 0
+    return Object.keys(errors).length === 0
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -155,16 +147,16 @@ export default function SellPage() {
 
     if (!validateForm()) {
       // 폼이 유효하지 않으면 오류 메시지를 표시하고 제출하지 않음
-      if (!customConcert.title) {
+      if (!concertTitle) {
         toast({
           title: "Error",
           description: "공연 제목을 입력해주세요",
           variant: "destructive",
         })
-      } else if (!customConcert.date) {
+      } else if (concertDates.some(dateObj => !dateObj.date)) {
         toast({
           title: "Error",
-          description: "공연 날짜를 입력해주세요",
+          description: "모든 공연 날짜를 입력해주세요",
           variant: "destructive",
         })
       } else if (!ticketDescription) {
@@ -184,16 +176,38 @@ export default function SellPage() {
     }
 
     try {
+      // 첫 번째 날짜를 주요 날짜로 사용
+      const primaryDate = concertDates[0]?.date || "";
+      
+      // 모든 날짜를 텍스트로 포맷팅
+      const formattedDates = concertDates.map(d => d.date).join(', ');
+      
+      // 모든 섹션을 텍스트로 포맷팅
+      const formattedSections = sections.map(s => `${s.name}: ${s.price}원`).join('\n');
+      
       // 판매 데이터 준비
       const saleData = {
-        title: customConcert.title,
-        eventName: customConcert.title,
-        eventDate: customConcert.date,
-        eventVenue: customConcert.venue,
-        content: ticketDescription || "",
-        category: "TICKET_CANCELLATION",
-        ticketPrice: parseInt(sections[0].price) || 0,
-        contactInfo: "연락처는 마이페이지에서 확인 가능합니다.",
+        title: concertTitle,
+        content: JSON.stringify({
+          description: ticketDescription,
+          date: formattedDates,
+          venue: concertVenue || "미정",
+          time: concertTime || "미정",
+          price: Number(sections[0].price.replace(/[^0-9]/g, '')),
+          sections: sections.map(section => ({
+            id: section.id.toString(),
+            label: section.name,
+            price: Number(section.price.replace(/[^0-9]/g, '')),
+            available: true
+          }))
+        }),
+        category: "TICKET_CANCELLATION", // 카테고리를 TICKET_CANCELLATION으로 변경
+        type: "TICKET_SALE", // 티켓 판매 타입으로 설정
+        concertDate: primaryDate, // 첫 번째 날짜 정보
+        location: concertVenue || concertTitle, // 장소 정보
+        // 문자열을 숫자로 변환하여 서버에 전송 (첫 번째 섹션 가격 사용)
+        price: Number(sections[0].price.replace(/[^0-9]/g, '')), // 모든 비숫자 문자 제거하고 변환
+        ticketPrice: Number(sections[0].price.replace(/[^0-9]/g, '')), // 데이터베이스의 ticketPrice 필드용
       };
 
       console.log("제출할 판매 데이터:", saleData);
@@ -215,24 +229,21 @@ export default function SellPage() {
         if (result && result.errors) {
           console.error("유효성 검사 오류:", result.errors);
           
-          const errorMessage = result.errors.map((err: any) => 
-            `${err.path}: ${err.message}`
-          ).join(', ');
+          let errorMessage = "유효성 검사 오류가 발생했습니다:";
           
-          throw new Error(errorMessage || result.message || '판매 등록에 실패했습니다.');
+          if (Array.isArray(result.errors)) {
+            errorMessage = result.errors.map((err: any) => 
+              `${err.path}: ${err.message}`
+            ).join(', ');
+          } else {
+            errorMessage = result.message || '판매 등록에 실패했습니다.';
+          }
+          
+          throw new Error(errorMessage);
         } else {
           throw new Error(result.message || '판매 등록에 실패했습니다.');
         }
       }
-      
-      // 판매 정보 표시를 위해 로컬 스토리지에 저장 (선택사항)
-      localStorage.setItem('lastSaleDetails', JSON.stringify({
-        saleId: result.post.id,
-        title: customConcert.title,
-        date: customConcert.date,
-        venue: customConcert.venue,
-        price: sections[0].price,
-      }));
       
       // 성공 메시지 표시
       toast({
@@ -250,7 +261,7 @@ export default function SellPage() {
         variant: "destructive",
       });
     }
-  };
+  }
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -310,27 +321,63 @@ export default function SellPage() {
                 <Input
                   type="text"
                   placeholder="공연 제목을 입력하세요"
-                  value={customConcert.title}
-                  onChange={(e) => updateCustomConcert("title", e.target.value)}
+                  value={concertTitle}
+                  onChange={(e) => setConcertTitle(e.target.value)}
                   className={formErrors.concertTitle ? "border-red-500" : ""}
                   required
                 />
-                {formErrors.concertTitle && <p className="mt-1 text-xs text-red-500">{formErrors.concertTitle}</p>}
+                {formErrors.concertTitle && (
+                  <p className="mt-1 text-xs text-red-500">{formErrors.concertTitle}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {concertDates.map((dateObj, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <div className="mb-1 flex items-center">
+                        <label className="text-sm font-medium text-gray-700">{index === 0 ? "공연 날짜" : `추가 날짜 ${index}`}</label>
+                        {formErrors[`date_${index}`] && <span className="text-xs text-red-500 ml-2">{formErrors[`date_${index}`]}</span>}
+                      </div>
+                      <Input
+                        type="date"
+                        value={dateObj.date}
+                        onChange={(e) => updateDate(index, e.target.value)}
+                        className={formErrors[`date_${index}`] ? "border-red-500" : ""}
+                      />
+                    </div>
+                    {concertDates.length > 1 && (
+                      <Button type="button" variant="ghost" className="mt-6" onClick={() => removeDate(index)}>
+                        삭제
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button type="button" variant="outline" onClick={addDate}>
+                  + 날짜 추가
+                </Button>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  공연 날짜 <span className="text-red-500">(필수)</span>
+                  공연 장소 <span className="text-gray-500">(선택)</span>
                 </label>
                 <Input
-                  type="text"
-                  placeholder="공연 날짜를 입력하세요 (예: 2024-03-20)"
-                  value={customConcert.date}
-                  onChange={(e) => updateCustomConcert("date", e.target.value)}
-                  className={formErrors.concertDate ? "border-red-500" : ""}
-                  required
+                  placeholder="공연 장소를 입력하세요"
+                  value={concertVenue}
+                  onChange={(e) => setConcertVenue(e.target.value)}
                 />
-                {formErrors.concertDate && <p className="mt-1 text-xs text-red-500">{formErrors.concertDate}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  공연 시간 <span className="text-gray-500">(선택)</span>
+                </label>
+                <Input
+                  placeholder="예: 19:00"
+                  value={concertTime}
+                  onChange={(e) => setConcertTime(e.target.value)}
+                />
               </div>
 
               <div className="mb-6">
@@ -343,47 +390,51 @@ export default function SellPage() {
                   </Button>
                 </div>
 
-                {sections.map((section, index) => (
-                  <div key={index} className="flex items-center gap-2 mb-2">
-                    <div className="flex-1">
-                      <Input
-                        type="text"
-                        placeholder="구역명 (예: R석, S석)"
-                        value={section.name}
-                        onChange={(e) => updateSectionName(index, e.target.value)}
-                        className={formErrors[`section_${index}_name`] ? "border-red-500" : ""}
-                        required
-                      />
-                      {formErrors[`section_${index}_name`] && (
-                        <p className="mt-1 text-xs text-red-500">{formErrors[`section_${index}_name`]}</p>
-                      )}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                  {sections.map((section, index) => (
+                    <div key={index} className="border rounded-lg p-4 text-center">
+                      <div className="flex-1 mb-2">
+                        <Input
+                          type="text"
+                          placeholder="구역명 (예: R석, S석)"
+                          value={section.name}
+                          onChange={(e) => updateSectionName(index, e.target.value)}
+                          className={formErrors[`section_${index}_name`] ? "border-red-500" : ""}
+                          required
+                        />
+                        {formErrors[`section_${index}_name`] && (
+                          <p className="mt-1 text-xs text-red-500">{formErrors[`section_${index}_name`]}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Input
+                          type="number"
+                          placeholder="가격"
+                          value={section.price}
+                          onChange={(e) => updateSectionPrice(index, e.target.value)}
+                          className={formErrors[`section_${index}_price`] ? "border-red-500" : ""}
+                          required
+                        />
+                        <span className="text-gray-500 whitespace-nowrap">원</span>
+                        {formErrors[`section_${index}_price`] && (
+                          <p className="mt-1 text-xs text-red-500">{formErrors[`section_${index}_price`]}</p>
+                        )}
+                      </div>
+                      <div className="flex justify-end items-center">
+                        {sections.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => removeSection(index)}
+                            className="h-8 w-8 text-red-500"
+                          >
+                            ✕
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 w-1/3">
-                      <Input
-                        type="number"
-                        placeholder="가격"
-                        value={section.price}
-                        onChange={(e) => updateSectionPrice(index, e.target.value)}
-                        className={formErrors[`section_${index}_price`] ? "border-red-500" : ""}
-                        required
-                      />
-                      <span className="text-gray-500 whitespace-nowrap">원</span>
-                      {formErrors[`section_${index}_price`] && (
-                        <p className="mt-1 text-xs text-red-500">{formErrors[`section_${index}_price`]}</p>
-                      )}
-                    </div>
-                    {sections.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => removeSection(index)}
-                        className="h-8 w-8 text-red-500"
-                      >
-                        ✕
-                      </Button>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
 
               <div>
@@ -391,13 +442,14 @@ export default function SellPage() {
                   티켓 상세설명 <span className="text-red-500">(필수)</span>
                 </label>
                 <Textarea
-                  placeholder="티켓에 대한 상세한 설명을 입력해주세요"
+                  placeholder="티켓에 대한 상세한 설명을 입력해주세요 (최소 10글자 이상)"
                   value={ticketDescription}
                   onChange={(e) => setTicketDescription(e.target.value)}
                   className={`min-h-[100px] ${formErrors.description ? "border-red-500" : ""}`}
                   required
                 />
                 {formErrors.description && <p className="mt-1 text-sm text-red-500">{formErrors.description}</p>}
+                <p className="mt-1 text-xs text-gray-500">※ 티켓 상세설명은 최소 10글자 이상 입력해주세요. 상세한 정보를 제공할수록 구매자의 관심을 끌 수 있습니다.</p>
               </div>
 
               <Button type="submit" className="w-full bg-[#0061FF] hover:bg-[#0052D6] text-white transition-colors">

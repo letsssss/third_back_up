@@ -91,48 +91,24 @@ export default function MyPage() {
       }
       
       // API 응답을 화면에 표시할 형식으로 변환
-      const salesData = data.posts.map((post: any) => {
-        // 티켓 가격 처리 (문자열이거나 숫자 모두 처리)
-        let formattedPrice = '가격 정보 없음';
-        if (post.ticketPrice !== null && post.ticketPrice !== undefined) {
-          try {
-            // 문자열이든 숫자든 처리 가능하도록
-            const priceValue = typeof post.ticketPrice === 'string' 
-              ? Number(post.ticketPrice) 
-              : post.ticketPrice;
-              
-            // NaN 체크와 매우 큰 숫자 값에 대한 처리
-            if (!isNaN(priceValue)) {
-              if (priceValue > Number.MAX_SAFE_INTEGER) {
-                // 매우 큰 숫자의 경우 문자열로 유지하되 천 단위 구분 적용
-                const priceStr = String(post.ticketPrice);
-                formattedPrice = priceStr.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + '원';
-              } else {
-                formattedPrice = `${priceValue.toLocaleString()}원`;
-              }
-            }
-          } catch (e) {
-            console.error("가격 처리 중 오류:", e);
-            formattedPrice = String(post.ticketPrice) + '원';
-          }
-        }
-        
-        return {
-          id: post.id,
-          title: post.title || post.eventName || "제목 없음",
-          date: post.eventDate || new Date(post.createdAt).toLocaleDateString(),
-          price: formattedPrice,
-          status: post.category === 'TICKET_CANCELLATION' ? "취켓팅 판매중" : "판매중"
-        };
-      });
+      const salesData = data.posts.map((post: any) => ({
+        id: post.id,
+        title: post.title || post.eventName || "제목 없음",
+        date: post.eventDate || new Date(post.createdAt).toLocaleDateString(),
+        price: `${post.ticketPrice?.toLocaleString() || '가격 정보 없음'}원`,
+        status: post.category === 'TICKET_CANCELLATION' ? "취켓팅 판매중" : "판매중"
+      }));
       
       console.log("변환된 판매 데이터:", salesData);
       setOngoingSales(salesData);
     } catch (error) {
       console.error('판매 목록 로딩 오류:', error);
       toast.error('판매 목록을 불러오는데 실패했습니다.');
-      // 더미 데이터 대신 빈 배열 반환
-      setOngoingSales([]);
+      // 더미 데이터로 대체
+      setOngoingSales([
+        { id: 1, title: "아이브 팬미팅 [더미 데이터]", date: "2024-04-05", price: "88,000원", status: "판매중" },
+        { id: 2, title: "웃는 남자 [더미 데이터]", date: "2024-01-09", price: "110,000원", status: "구매자 입금 대기중" },
+      ]);
     } finally {
       setIsLoadingSales(false);
     }
@@ -141,20 +117,40 @@ export default function MyPage() {
   // 게시물 삭제 함수
   const deletePost = async (postId: number) => {
     try {
+      console.log("게시물 삭제 요청:", postId);
+      
       const response = await fetch(`/api/posts/${postId}`, {
         method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
       });
       
-      if (!response.ok) {
-        throw new Error('게시물 삭제에 실패했습니다.');
+      // 응답이 JSON이 아닌 경우 처리
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.error("응답이 JSON이 아닙니다:", await response.text());
+        throw new Error("서버에서 유효한 응답을 받지 못했습니다.");
       }
-      
-      // 삭제 성공 시 목록에서 제거
+
+      const data = await response.json();
+      console.log("삭제 응답:", data);
+
+      if (!response.ok) {
+        throw new Error(data.message || '게시물 삭제에 실패했습니다.');
+      }
+
+      // 성공적으로 삭제된 경우 목록에서 제거
       setOngoingSales(prev => prev.filter(sale => sale.id !== postId));
-      toast.success('게시물이 삭제되었습니다.');
+      
+      toast.success("게시물이 성공적으로 삭제되었습니다.");
+      
+      // 목록 새로고침
+      fetchOngoingSales();
     } catch (error) {
       console.error('게시물 삭제 오류:', error);
-      toast.error('게시물 삭제에 실패했습니다.');
+      toast.error(error instanceof Error ? error.message : "게시물 삭제 중 오류가 발생했습니다.");
     }
   };
 
