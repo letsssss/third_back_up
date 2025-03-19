@@ -229,8 +229,8 @@ export default function MyPage() {
     
     setIsLoadingNotifications(true);
     try {
-      // 쿠키에서 인증 토큰을 가져오거나 사용자 정보에서 토큰을 가져옵니다
-      const token = localStorage.getItem('auth-token') || '';
+      // 클라이언트 사이드에서만 localStorage에 접근하도록 수정
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth-token') || '' : '';
       
       const response = await fetch('/api/notifications', {
         headers: {
@@ -323,8 +323,8 @@ export default function MyPage() {
   // 알림 읽음 상태 업데이트
   const markNotificationAsRead = async (notificationId: number) => {
     try {
-      // 토큰 가져오기
-      const token = localStorage.getItem('auth-token') || '';
+      // 클라이언트 사이드에서만 localStorage에 접근하도록 수정
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth-token') || '' : '';
       
       const response = await fetch('/api/notifications', {
         method: 'PATCH',
