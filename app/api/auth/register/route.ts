@@ -1,6 +1,20 @@
+// 타입 정의 추가
+interface MemoryUser {
+  id: number;
+  email: string;
+  name: string;
+  role: string;
+  [key: string]: any;
+}
+
+// global 타입 정의
+declare global {
+  var memoryUsers: MemoryUser[] | undefined;
+}
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { hashPassword, generateAccessToken, generateRefreshToken } from "@/lib/auth";
+import { hashPassword, generateAccessToken, generateRefreshToken, checkDuplicateEmail } from "@/lib/auth";
 import { addMemoryUser } from "../me/route"; // 개발 환경 테스트용
 
 // 이메일 유효성 검사 함수
@@ -45,63 +59,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "비밀번호는 최소 6자 이상이어야 합니다." }, { status: 400 });
     }
 
-    // 개발 환경 확인
-    const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+    // 이메일을 소문자로 변환하여 일관성 유지
+    const emailLowerCase = email.toLowerCase();
     
-    // 개발 환경에서 데이터베이스 없이 테스트
-    if (isDevelopment && (!process.env.DATABASE_URL || process.env.DATABASE_URL === "")) {
-      console.log("개발 환경에서 회원가입 처리");
-      
-      // 이메일 중복 검사
-      const emailLowerCase = email.toLowerCase();
-      
-      // 사용자 추가 (비밀번호는 개발 환경에서는 평문으로 저장, 실제 환경에서는 해시 처리)
-      const newUser = addMemoryUser({
-        email: emailLowerCase,
-        password,
-        name,
-        role: "USER"
-      });
-      
-      // 민감한 정보 제외
-      const userForResponse = {
-        id: newUser.id,
-        email: newUser.email,
-        name: newUser.name,
-        role: newUser.role
-      };
-      
-      console.log("회원가입 성공:", userForResponse.email);
-      
-      // 개발환경용 토큰 생성
-      const dummyToken = `dev-jwt-${Date.now()}-${userForResponse.id}`;
-      
-      const response = NextResponse.json({
-        message: "회원가입이 완료되었습니다.",
-        user: userForResponse,
-        token: dummyToken
-      }, { status: 201 });
-      
-      // 쿠키 설정
-      response.cookies.set("auth-token", dummyToken, {
-        httpOnly: true,
-        secure: false,
-        sameSite: "strict",
-        maxAge: 60 * 60, // 1시간 (초 단위)
-        path: "/",
-      });
-      
-      return response;
-    }
-
-    // 프로덕션 환경 또는 DATABASE_URL이 설정된 개발 환경
     try {
       // 이메일 중복 검사
       const existingUser = await prisma.user.findUnique({
-        where: { email: email.toLowerCase() },
+        where: { email: emailLowerCase },
       });
 
       if (existingUser) {
+        console.log("중복 이메일 감지:", emailLowerCase);
         return NextResponse.json({ error: "이미 가입된 이메일입니다." }, { status: 409 });
       }
 
@@ -111,12 +79,14 @@ export async function POST(request: Request) {
       // 사용자 생성
       const user = await prisma.user.create({
         data: {
-          email: email.toLowerCase(),
+          email: emailLowerCase,
           password: hashedPassword,
           name,
           role: "USER",
         },
       });
+
+      console.log("데이터베이스에 사용자 생성 성공:", user.email);
 
       // JWT 토큰 생성
       const accessToken = generateAccessToken(user.id, user.email, user.role);
@@ -148,8 +118,13 @@ export async function POST(request: Request) {
       });
 
       return response;
-    } catch (dbError) {
+    } catch (dbError: any) {
       console.error("데이터베이스 오류:", dbError);
+      
+      // Prisma 에러 분석
+      if (dbError.code === 'P2002' && dbError.meta?.target?.includes('email')) {
+        return NextResponse.json({ error: "이미 가입된 이메일입니다." }, { status: 409 });
+      }
       
       return NextResponse.json({ 
         error: "서버 오류가 발생했습니다. 나중에 다시 시도해주세요." 

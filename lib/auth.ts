@@ -1,10 +1,14 @@
-import { compare, hash } from 'bcrypt';
+import { compare, hash } from 'bcryptjs';
 import { sign, verify } from 'jsonwebtoken';
 import { PrismaClient } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { NextAuthOptions } from 'next-auth';
 import { JWT } from 'next-auth/jwt';
 import { getServerSession } from 'next-auth/next';
+import { NextResponse } from 'next/server';
+
+// 개발 환경인지 확인
+const isDevelopment = process.env.NODE_ENV === 'development';
 
 // 세션에 id 필드를 추가하기 위한 타입 확장
 declare module "next-auth" {
@@ -44,9 +48,6 @@ export const authOptions: NextAuthOptions = {
     },
   },
 };
-
-// 개발 환경인지 확인하는 함수
-export const isDevelopment = process.env.NODE_ENV === 'development';
 
 // 사용자 비밀번호를 해싱합니다.
 export async function hashPassword(password: string): Promise<string> {
@@ -173,6 +174,32 @@ export function getTokenFromCookies(request: Request): string | null {
  */
 export async function getAuthenticatedUser(request: NextRequest) {
   try {
+    // 1. JWT 토큰 인증 시도 (쿠키에서 auth-token 가져오기)
+    const token = getTokenFromCookies(request);
+    if (token) {
+      // 토큰 유효성 검증
+      const decoded = verifyToken(token);
+      if (decoded && decoded.userId) {
+        console.log('JWT 토큰으로 인증됨, userId:', decoded.userId);
+        
+        // 사용자 정보 조회
+        const user = await prisma.user.findUnique({
+          where: { id: decoded.userId },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          }
+        });
+
+        if (user) {
+          console.log('JWT 토큰으로 사용자 찾음:', user.email);
+          return user;
+        }
+      }
+    }
+
+    // 2. 세션 인증 시도 (NextAuth)
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.email) {
@@ -195,10 +222,40 @@ export async function getAuthenticatedUser(request: NextRequest) {
       return null;
     }
 
-    console.log('인증된 사용자:', user);
+    console.log('NextAuth 세션으로 인증된 사용자:', user);
     return user;
   } catch (error) {
     console.error('사용자 인증 확인 중 오류:', error);
     return null;
   }
+}
+
+// 가입 전 중복 이메일 검사 로직 추가
+export async function checkDuplicateEmail(email: string): Promise<boolean> {
+  const existingUser = await prisma.user.findUnique({
+    where: { email }
+  });
+  
+  return !!existingUser;
+}
+
+// 이후 가입 절차 진행
+export async function signup(email: string, password: string, name: string): Promise<void> {
+  // 이메일 중복 검사
+  const isDuplicateEmail = await checkDuplicateEmail(email);
+  if (isDuplicateEmail) {
+    throw new Error('이미 가입된 이메일입니다.');
+  }
+
+  // 비밀번호 해싱
+  const hashedPassword = await hashPassword(password);
+
+  // 사용자 정보 저장
+  await prisma.user.create({
+    data: {
+      email,
+      password: hashedPassword,
+      name,
+    }
+  });
 } 

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { verifyToken, getTokenFromHeaders, getTokenFromCookies } from '@/lib/auth';
 import { cors } from '@/lib/cors';
 
 // OPTIONS 요청 처리
@@ -21,12 +20,12 @@ export async function GET(req: Request) {
   try {
     console.log('알림 API 호출됨');
     
-    // 세션 확인
-    const session = await getServerSession(authOptions);
-    console.log('세션 정보:', session);
+    // JWT 토큰 확인
+    const token = getTokenFromHeaders(req.headers) || getTokenFromCookies(req);
+    console.log('토큰 정보:', token ? '토큰 있음' : '토큰 없음');
     
-    if (!session) {
-      console.log('세션이 없음');
+    if (!token) {
+      console.log('토큰이 없음');
       return new NextResponse(
         JSON.stringify({ 
           error: '로그인이 필요합니다.', 
@@ -44,11 +43,13 @@ export async function GET(req: Request) {
       );
     }
 
-    if (!session.user?.email) {
-      console.log('세션에 이메일 정보 없음');
+    // 토큰 검증
+    const decoded = verifyToken(token);
+    if (!decoded || !decoded.userId) {
+      console.log('유효하지 않은 토큰');
       return new NextResponse(
         JSON.stringify({ 
-          error: '유효하지 않은 세션입니다.', 
+          error: '유효하지 않은 인증 정보입니다.', 
           code: 'AUTH_ERROR' 
         }),
         { 
@@ -63,12 +64,12 @@ export async function GET(req: Request) {
       );
     }
 
-    console.log('사용자 이메일:', session.user.email);
+    console.log('사용자 ID:', decoded.userId);
     
     // 사용자 정보 조회
     try {
       let user = await prisma.user.findUnique({
-        where: { email: session.user.email },
+        where: { id: decoded.userId },
         select: {
           id: true,
           email: true,
@@ -76,44 +77,26 @@ export async function GET(req: Request) {
         }
       });
       
-      // 사용자가 없으면 자동으로 생성
       if (!user) {
-        console.log('사용자 정보 없음, 새로 생성 시도:', session.user.email);
-        try {
-          user = await prisma.user.create({
-            data: {
-              email: session.user.email,
-              name: session.user.name || session.user.email.split('@')[0],
-              password: '', // 임시 비밀번호, OAuth 사용자는 실제로 사용하지 않음
-            },
-            select: {
-              id: true,
-              email: true,
-              name: true
+        console.log('사용자 정보 없음:', decoded.userId);
+        return new NextResponse(
+          JSON.stringify({ 
+            error: '사용자 정보를 찾을 수 없습니다.', 
+            code: 'USER_NOT_FOUND' 
+          }),
+          { 
+            status: 404,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
+              'Access-Control-Allow-Headers': 'Content-Type, Authorization'
             }
-          });
-          console.log('새 사용자 생성 성공:', user);
-        } catch (createError) {
-          console.error('사용자 생성 실패:', createError);
-          return new NextResponse(
-            JSON.stringify({ 
-              error: '사용자 정보 생성에 실패했습니다. 다시 시도해주세요.', 
-              code: 'USER_CREATE_ERROR' 
-            }),
-            { 
-              status: 500,
-              headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-              }
-            }
-          );
-        }
+          }
+        );
       }
 
-      console.log('사용자 정보 조회/생성 성공:', user);
+      console.log('사용자 정보 조회 성공:', user);
 
       // 사용자의 알림 목록 조회
       try {
@@ -283,9 +266,10 @@ export async function POST(req: Request) {
   }
 }
 
-// 알림 읽음 상태 업데이트
+// 알림 읽음 상태 변경
 export async function PATCH(req: Request) {
   try {
+    // 요청 본문 파싱
     const body = await req.json();
     const { notificationId } = body;
 
@@ -300,108 +284,79 @@ export async function PATCH(req: Request) {
       );
     }
 
-    // 세션 확인
-    const session = await getServerSession(authOptions);
-    console.log('세션 정보:', session);
-    
-    if (!session) {
-      console.log('세션이 없음');
+    // 토큰 확인
+    const token = getTokenFromHeaders(req.headers) || getTokenFromCookies(req);
+    if (!token) {
       return NextResponse.json(
-        { error: '로그인이 필요합니다.', code: 'AUTH_ERROR' },
-        { status: 401 }
-      );
-    }
-
-    if (!session.user?.email) {
-      console.log('세션에 이메일 정보 없음');
-      return NextResponse.json(
-        { error: '유효하지 않은 세션입니다.', code: 'AUTH_ERROR' },
-        { status: 401 }
-      );
-    }
-
-    console.log('사용자 이메일:', session.user.email);
-    
-    // 사용자 정보 조회
-    try {
-      const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        select: {
-          id: true,
-          email: true,
-          name: true
-        }
-      });
-      
-      if (!user) {
-        console.log('사용자를 찾을 수 없음:', session.user.email);
-        return NextResponse.json(
-          { 
-            error: '사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.', 
-            code: 'USER_NOT_FOUND' 
-          },
-          { status: 404 }
-        );
-      }
-
-      console.log('사용자 정보 조회 성공:', user);
-
-      // 알림 조회
-      const notification = await prisma.notification.findUnique({
-        where: { id: notificationId },
-      });
-
-      if (!notification) {
-        return NextResponse.json(
-          { error: '알림을 찾을 수 없습니다.' },
-          { status: 404, headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-          }}
-        );
-      }
-
-      // 알림이 해당 사용자의 것인지 확인
-      if (notification.userId !== user.id) {
-        return NextResponse.json(
-          { error: '권한이 없습니다.' },
-          { status: 403, headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-          }}
-        );
-      }
-
-      // 알림 읽음 상태 업데이트
-      const updatedNotification = await prisma.notification.update({
-        where: { id: notificationId },
-        data: { isRead: true },
-      });
-
-      return NextResponse.json({ notification: updatedNotification }, 
-        { status: 200, headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-        }}
-      );
-    } catch (dbError) {
-      console.error('데이터베이스 쿼리 오류:', dbError);
-      return NextResponse.json(
-        { error: '알림 상태 업데이트 중 데이터베이스 오류가 발생했습니다. 데이터베이스가 최신 상태인지 확인하세요.' },
-        { status: 500, headers: {
+        { error: '인증이 필요합니다.' },
+        { status: 401, headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization'
         }}
       );
     }
-  } catch (error) {
-    console.error('알림 업데이트 중 오류 발생:', error);
+
+    // 토큰 검증
+    const decoded = verifyToken(token);
+    if (!decoded || !decoded.userId) {
+      return NextResponse.json(
+        { error: '유효하지 않은 인증 정보입니다.' },
+        { status: 401, headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }}
+      );
+    }
+
+    // 알림 소유자 확인
+    const notification = await prisma.notification.findUnique({
+      where: { id: notificationId },
+      select: { userId: true }
+    });
+
+    if (!notification) {
+      return NextResponse.json(
+        { error: '알림을 찾을 수 없습니다.' },
+        { status: 404, headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }}
+      );
+    }
+
+    if (notification.userId !== decoded.userId) {
+      return NextResponse.json(
+        { error: '이 알림에 대한 권한이 없습니다.' },
+        { status: 403, headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }}
+      );
+    }
+
+    // 읽음 상태 업데이트
+    const updatedNotification = await prisma.notification.update({
+      where: { id: notificationId },
+      data: { isRead: true }
+    });
+
     return NextResponse.json(
-      { error: '알림을 업데이트하는 중 오류가 발생했습니다.' },
+      { success: true, notification: updatedNotification },
+      { status: 200, headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }}
+    );
+
+  } catch (error) {
+    console.error('알림 업데이트 오류:', error);
+    return NextResponse.json(
+      { error: '알림 업데이트 중 오류가 발생했습니다.', details: process.env.NODE_ENV === 'development' ? String(error) : undefined },
       { status: 500, headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',

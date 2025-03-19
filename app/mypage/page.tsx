@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { ArrowLeft, User, ShoppingBag, Tag, Trash2, Loader as LoaderIcon } from "lucide-react"
+import { ArrowLeft, User, ShoppingBag, Tag, Loader as LoaderIcon } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -19,11 +19,13 @@ const Loader = ({ size = 24 }: { size?: number }) => (
   </div>
 );
 
-// 임시 데이터 (실제로는 API나 데이터베이스에서 가져와야 합니다)
-const ongoingPurchases = [
-  { id: 1, title: "세븐틴 콘서트", date: "2024-03-20", price: "165,000원", status: "입금 대기중" },
-  { id: 2, title: "데이식스 전국투어", date: "2024-02-01", price: "99,000원", status: "배송 준비중" },
-]
+// 타입 정의
+type TransactionStatus = {
+  취켓팅진행중: number
+  취켓팅완료: number
+  거래완료: number
+  거래취소: number
+}
 
 // 판매 중인 상품 타입 정의
 interface Sale {
@@ -57,6 +59,21 @@ export default function MyPage() {
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
   const [mounted, setMounted] = useState(false)
 
+  // 트랜잭션 상태 카운트
+  const purchaseStatus: TransactionStatus = {
+    취켓팅진행중: 0,
+    취켓팅완료: 0,
+    거래완료: 0,
+    거래취소: 0,
+  }
+
+  const saleStatus: TransactionStatus = {
+    취켓팅진행중: 0,
+    취켓팅완료: 0,
+    거래완료: 0,
+    거래취소: 0,
+  }
+
   // 마운트 확인
   useEffect(() => {
     setMounted(true)
@@ -73,7 +90,6 @@ export default function MyPage() {
   // 초기 데이터 로드
   useEffect(() => {
     if (user) {
-      // 판매 목록은 탭이 선택될 때 불러옴
       // 알림은 페이지 로드 시 항상 가져옴 (알림 카운트 표시를 위해)
       fetchNotifications();
     }
@@ -82,9 +98,9 @@ export default function MyPage() {
   // user와 activeTab이 변경될 때 데이터 가져오기
   useEffect(() => {
     if (user) {
-      if (activeTab === 'sales') {
+      if (activeTab === 'ongoing-sales') {
         fetchOngoingSales();
-      } else if (activeTab === 'purchases') {
+      } else if (activeTab === 'ongoing-purchases') {
         fetchOngoingPurchases();
       }
     }
@@ -94,24 +110,24 @@ export default function MyPage() {
   const unreadNotificationCount = notifications.filter(n => !n.isRead).length;
 
   // 판매 중인 상품 목록 가져오기
-    const fetchOngoingSales = async () => {
-      if (!user) return;
-      
-      setIsLoadingSales(true);
-      try {
+  const fetchOngoingSales = async () => {
+    if (!user) return;
+    
+    setIsLoadingSales(true);
+    try {
       // 요청 URL에 userId 파라미터 추가
       console.log("판매 목록 불러오기 시도... 사용자 ID:", user.id);
       const response = await fetch(`/api/posts?userId=${user.id}`);
       
       console.log("API 응답 상태:", response.status, response.statusText);
         
-        if (!response.ok) {
+      if (!response.ok) {
         const errorData = await response.text();
         console.error("API 오류 응답:", errorData);
-          throw new Error('판매 목록을 불러오는데 실패했습니다.');
-        }
+        throw new Error('판매 목록을 불러오는데 실패했습니다.');
+      }
         
-        const data = await response.json();
+      const data = await response.json();
       console.log("받은 데이터:", data);
       
       if (!data.posts || !Array.isArray(data.posts)) {
@@ -120,29 +136,29 @@ export default function MyPage() {
         return;
       }
         
-        // API 응답을 화면에 표시할 형식으로 변환
-        const salesData = data.posts.map((post: any) => ({
-          id: post.id,
+      // API 응답을 화면에 표시할 형식으로 변환
+      const salesData = data.posts.map((post: any) => ({
+        id: post.id,
         title: post.title || post.eventName || "제목 없음",
-          date: post.eventDate || new Date(post.createdAt).toLocaleDateString(),
-          price: `${post.ticketPrice?.toLocaleString() || '가격 정보 없음'}원`,
-          status: post.category === 'TICKET_CANCELLATION' ? "취켓팅 판매중" : "판매중"
-        }));
+        date: post.eventDate || new Date(post.createdAt).toLocaleDateString(),
+        price: `${post.ticketPrice?.toLocaleString() || '가격 정보 없음'}원`,
+        status: post.category === 'TICKET_CANCELLATION' ? "취켓팅 판매중" : "판매중"
+      }));
         
       console.log("변환된 판매 데이터:", salesData);
-        setOngoingSales(salesData);
-      } catch (error) {
-        console.error('판매 목록 로딩 오류:', error);
-        toast.error('판매 목록을 불러오는데 실패했습니다.');
+      setOngoingSales(salesData);
+    } catch (error) {
+      console.error('판매 목록 로딩 오류:', error);
+      toast.error('판매 목록을 불러오는데 실패했습니다.');
       // 더미 데이터로 대체
-        setOngoingSales([
+      setOngoingSales([
         { id: 1, title: "아이브 팬미팅 [더미 데이터]", date: "2024-04-05", price: "88,000원", status: "판매중" },
         { id: 2, title: "웃는 남자 [더미 데이터]", date: "2024-01-09", price: "110,000원", status: "구매자 입금 대기중" },
-        ]);
-      } finally {
-        setIsLoadingSales(false);
-      }
-    };
+      ]);
+    } finally {
+      setIsLoadingSales(false);
+    }
+  };
 
   // 구매 중인 상품 목록 가져오기
   const fetchOngoingPurchases = async () => {
@@ -213,7 +229,15 @@ export default function MyPage() {
     
     setIsLoadingNotifications(true);
     try {
-      const response = await fetch('/api/notifications');
+      // 쿠키에서 인증 토큰을 가져오거나 사용자 정보에서 토큰을 가져옵니다
+      const token = localStorage.getItem('auth-token') || '';
+      
+      const response = await fetch('/api/notifications', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -299,10 +323,14 @@ export default function MyPage() {
   // 알림 읽음 상태 업데이트
   const markNotificationAsRead = async (notificationId: number) => {
     try {
+      // 토큰 가져오기
+      const token = localStorage.getItem('auth-token') || '';
+      
       const response = await fetch('/api/notifications', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ notificationId }),
       });
@@ -365,134 +393,6 @@ export default function MyPage() {
     }
   };
 
-  // 샘플 판매 글 작성 함수 추가
-  const createSamplePost = async () => {
-    if (!user) return;
-    
-    try {
-      // 샘플 데이터 생성
-      const samplePost = {
-        title: "뮤지컬 레미제라블 티켓 양도",
-        content: "개인사정으로 인해 티켓을 양도합니다. 가격은 정가에 판매합니다.",
-        category: "TICKET_SALE",
-        eventName: "뮤지컬 레미제라블",
-        eventDate: "2024-05-15",
-        eventVenue: "블루스퀘어 신한카드홀",
-        ticketPrice: 130000,
-        contactInfo: "010-1234-5678"
-      };
-      
-      // API 호출
-      const response = await fetch('/api/posts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(samplePost),
-      });
-      
-      if (!response.ok) {
-        throw new Error('샘플 판매글 작성에 실패했습니다');
-      }
-      
-      toast.success('샘플 판매글이 작성되었습니다');
-      // 성공 후 목록 새로고침
-      fetchOngoingSales();
-      
-    } catch (error) {
-      console.error('샘플 판매글 작성 오류:', error);
-      toast.error('샘플 판매글 작성에 실패했습니다');
-    }
-  };
-
-  // 판매 목록이 없을 때 렌더링할 컴포넌트
-  const EmptySalesState = () => (
-    <div className="text-center py-8">
-      <p className="text-gray-500 mb-4">판매 중인 티켓이 없습니다</p>
-      <button
-        onClick={createSamplePost}
-        className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
-      >
-        샘플 판매글 작성하기
-      </button>
-    </div>
-  );
-
-  // 진행 중인 판매 탭 렌더링 함수
-  const renderOngoingSalesTab = () => {
-    if (isLoadingSales) {
-      return <div className="text-center py-8"><Loader size={30} /></div>;
-    }
-
-    if (ongoingSales.length === 0) {
-      return <EmptySalesState />;
-    }
-
-    return (
-      <div className="space-y-4">
-        {ongoingSales.map((sale) => (
-          <div key={sale.id} className="border rounded-lg p-4 flex justify-between items-center">
-            <div>
-              <h3 className="font-medium">{sale.title}</h3>
-              <p className="text-sm text-gray-500">날짜: {sale.date}</p>
-              <p className="text-sm text-gray-500">가격: {sale.price}</p>
-              <p className="text-sm font-medium text-primary">{sale.status}</p>
-            </div>
-            <button
-              onClick={() => deletePost(sale.id)}
-              className="text-red-500 hover:text-red-700"
-              aria-label="삭제"
-            >
-              <FaTrash />
-            </button>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  // 진행 중인 구매 탭 렌더링 함수
-  const renderOngoingPurchasesTab = () => {
-    if (isLoadingPurchases) {
-      return <div className="text-center py-8"><Loader size={30} /></div>;
-    }
-
-    if (ongoingPurchases.length === 0) {
-      return (
-        <div className="text-center py-8">
-          <p className="text-gray-500 mb-4">구매 내역이 없습니다</p>
-          <button
-            onClick={() => router.push('/tickets')}
-            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
-          >
-            티켓 구매하러 가기
-          </button>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-4">
-        {ongoingPurchases.map((purchase) => (
-          <div key={purchase.id} className="border rounded-lg p-4">
-            <h3 className="font-medium">{purchase.title}</h3>
-            <p className="text-sm text-gray-500">날짜: {purchase.date}</p>
-            <p className="text-sm text-gray-500">가격: {purchase.price}</p>
-            <p className="text-sm font-medium text-primary">{purchase.status}</p>
-            {purchase.sellerId && (
-              <Link 
-                href={`/seller/${purchase.sellerId}`} 
-                className="text-sm text-blue-600 hover:underline mt-2 inline-block"
-              >
-                판매자 정보 보기
-              </Link>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
   // 로딩 중이거나 마운트되지 않은 경우 로딩 표시
   if (!mounted || isLoading) {
     return (
@@ -525,18 +425,10 @@ export default function MyPage() {
     <div className="min-h-screen bg-gray-100">
       <header className="bg-white shadow">
         <div className="container mx-auto px-4 py-6">
-          <div className="flex justify-between items-center">
-            <Link href="/" className="flex items-center text-gray-600 hover:text-gray-900">
-              <ArrowLeft className="h-5 w-5 mr-2" />
-              <span>홈으로 돌아가기</span>
-            </Link>
-            <button 
-              onClick={handleLogout} 
-              className="text-gray-700 hover:text-[#0061FF] transition-colors"
-            >
-              로그아웃
-            </button>
-          </div>
+          <Link href="/" className="flex items-center text-gray-600 hover:text-gray-900">
+            <ArrowLeft className="h-5 w-5 mr-2" />
+            <span>홈으로 돌아가기</span>
+          </Link>
           <h1 className="text-3xl font-bold mt-4">마이페이지</h1>
         </div>
       </header>
@@ -596,6 +488,56 @@ export default function MyPage() {
           </div>
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="bg-white rounded-lg shadow-md overflow-hidden p-6">
+            <h2 className="text-lg font-semibold mb-4">
+              최근 구매 현황 <span className="text-sm font-normal text-gray-500">(최근 1개월 기준)</span>
+            </h2>
+            <div className="grid grid-cols-4 gap-4 text-center">
+              <div className="flex flex-col items-center">
+                <span className="text-sm text-gray-600 mb-2">취켓팅 진행중</span>
+                <span className="text-2xl font-bold">{purchaseStatus.취켓팅진행중}</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-sm text-gray-600 mb-2">취켓팅 완료</span>
+                <span className="text-2xl font-bold">{purchaseStatus.취켓팅완료}</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-sm text-gray-600 mb-2">거래완료</span>
+                <span className="text-2xl font-bold">{purchaseStatus.거래완료}</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-sm text-gray-600 mb-2">거래취소</span>
+                <span className="text-2xl font-bold">{purchaseStatus.거래취소}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-md overflow-hidden p-6">
+            <h2 className="text-lg font-semibold mb-4">
+              최근 판매 현황 <span className="text-sm font-normal text-gray-500">(최근 1개월 기준)</span>
+            </h2>
+            <div className="grid grid-cols-4 gap-4 text-center">
+              <div className="flex flex-col items-center">
+                <span className="text-sm text-gray-600 mb-2">취켓팅 진행중</span>
+                <span className="text-2xl font-bold">{saleStatus.취켓팅진행중}</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-sm text-gray-600 mb-2">취켓팅 완료</span>
+                <span className="text-2xl font-bold">{saleStatus.취켓팅완료}</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-sm text-gray-600 mb-2">거래완료</span>
+                <span className="text-2xl font-bold">{saleStatus.거래완료}</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-sm text-gray-600 mb-2">거래취소</span>
+                <span className="text-2xl font-bold">{saleStatus.거래취소}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
           <div className="flex border-b">
             <button
@@ -606,42 +548,18 @@ export default function MyPage() {
               프로필
             </button>
             <button
-              className={`flex-1 py-4 px-6 text-center ${activeTab === "purchases" ? "bg-gray-100 font-semibold" : ""}`}
-              onClick={() => setActiveTab("purchases")}
+              className={`flex-1 py-4 px-6 text-center ${activeTab === "ongoing-purchases" ? "bg-gray-100 font-semibold" : ""}`}
+              onClick={() => setActiveTab("ongoing-purchases")}
             >
               <ShoppingBag className="inline-block mr-2" />
-              구매 내역
+              구매중인 상품
             </button>
             <button
-              className={`flex-1 py-4 px-6 text-center ${activeTab === "sales" ? "bg-gray-100 font-semibold" : ""}`}
-              onClick={() => setActiveTab("sales")}
+              className={`flex-1 py-4 px-6 text-center ${activeTab === "ongoing-sales" ? "bg-gray-100 font-semibold" : ""}`}
+              onClick={() => setActiveTab("ongoing-sales")}
             >
               <Tag className="inline-block mr-2" />
-              판매 내역
-            </button>
-            <button
-              className={`flex-1 py-4 px-6 text-center ${activeTab === "notifications" ? "bg-gray-100 font-semibold" : ""}`}
-              onClick={() => setActiveTab("notifications")}
-            >
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                className="inline-block mr-2 h-5 w-5" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
-              >
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-              </svg>
-              알림
-              {unreadNotificationCount > 0 && (
-                <span className="inline-flex items-center justify-center ml-2 h-5 w-5 text-xs font-semibold text-white bg-red-500 rounded-full">
-                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
-                </span>
-              )}
+              판매중인 상품
             </button>
           </div>
 
@@ -654,10 +572,10 @@ export default function MyPage() {
                 </div>
                 <h2 className="text-xl font-semibold mb-4">프로필 정보</h2>
                 <p>
-                  <strong>이름:</strong> {user.name}
+                  <strong>이름:</strong> {user.name || "이름 정보 없음"}
                 </p>
                 <p>
-                  <strong>이메일:</strong> {user.email}
+                  <strong>이메일:</strong> {user.email || "이메일 정보 없음"}
                 </p>
                 <p>
                   <strong>가입일:</strong> {new Date().toLocaleDateString()}
@@ -668,56 +586,76 @@ export default function MyPage() {
               </div>
             )}
 
-            {activeTab === "purchases" && renderOngoingPurchasesTab()}
-
-            {activeTab === "sales" && (
+            {activeTab === "ongoing-purchases" && (
               <div>
-                <h2 className="text-xl font-semibold mb-4">판매중인 상품</h2>
-                {renderOngoingSalesTab()}
+                <h2 className="text-xl font-semibold mb-4">구매중인 상품</h2>
+                {isLoadingPurchases ? (
+                  <div className="text-center py-8"><Loader size={30} /></div>
+                ) : ongoingPurchases.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 mb-4">구매 내역이 없습니다</p>
+                    <Button 
+                      onClick={() => router.push('/tickets')} 
+                      className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+                    >
+                      티켓 구매하러 가기
+                    </Button>
+                  </div>
+                ) : (
+                  ongoingPurchases.map((item) => (
+                    <div key={item.id} className="border-b py-4 last:border-b-0">
+                      <h3 className="font-medium">{item.title}</h3>
+                      <p className="text-sm text-gray-600">{item.date}</p>
+                      <p className="text-sm font-semibold">{item.price}</p>
+                      <p className="text-sm text-blue-600">{item.status}</p>
+                      <Link href={`/transaction/${item.id}`}>
+                        <Button className="mt-2 text-sm" variant="outline">
+                          거래 상세
+                        </Button>
+                      </Link>
+                    </div>
+                  ))
+                )}
               </div>
             )}
 
-            {activeTab === "notifications" && (
+            {activeTab === "ongoing-sales" && (
               <div>
-                <h2 className="text-xl font-semibold mb-4">알림 목록</h2>
-                {isLoadingNotifications ? (
-                  <div className="flex justify-center py-4">
-                    <Loader size={24} />
+                <h2 className="text-xl font-semibold mb-4">판매중인 상품</h2>
+                {isLoadingSales ? (
+                  <div className="text-center py-8"><Loader size={30} /></div>
+                ) : ongoingSales.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 mb-4">판매 중인 티켓이 없습니다</p>
+                    <Button
+                      onClick={() => router.push('/sell')}
+                      className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+                    >
+                      티켓 판매하러 가기
+                    </Button>
                   </div>
-                ) : notifications.length > 0 ? (
-                  <div className="space-y-4">
-                    {notifications.map((notification) => (
-                      <div 
-                        key={notification.id} 
-                        className={`border-l-4 ${notification.isRead ? 'border-gray-300' : 'border-blue-500'} p-4 bg-white shadow-sm rounded-lg`}
-                        onClick={() => !notification.isRead && markNotificationAsRead(notification.id)}
-                      >
-                      <div className="flex justify-between items-start">
-                          <div className={`${notification.isRead ? 'text-gray-700' : 'text-black font-medium'}`}>
-                            {notification.message}
-                          </div>
-                          <div className="ml-2 flex-shrink-0">
-                            <span className={`inline-block px-2 py-1 text-xs rounded-full ${notification.type === 'PURCHASE' ? 'bg-blue-100 text-blue-800' : notification.type === 'SYSTEM' ? 'bg-gray-100 text-gray-800' : 'bg-green-100 text-green-800'}`}>
-                              {notification.type === 'PURCHASE' ? '취켓팅 신청' : notification.type === 'SYSTEM' ? '시스템' : '댓글'}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-xs text-gray-500 mt-2 flex justify-between">
-                          <span>{notification.createdAt}</span>
-                          {notification.postId && (
-                            <Link 
-                              href={`/ticket-cancellation/${notification.postId}`}
-                              className="text-blue-600 hover:underline"
-                            >
-                              글 보기
-                            </Link>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    </div>
                 ) : (
-                  <p className="text-gray-500">알림이 없습니다.</p>
+                  ongoingSales.map((item) => (
+                    <div key={item.id} className="border-b py-4 last:border-b-0">
+                      <h3 className="font-medium">{item.title}</h3>
+                      <p className="text-sm text-gray-600">{item.date}</p>
+                      <p className="text-sm font-semibold">{item.price}</p>
+                      <p className="text-sm text-green-600">{item.status}</p>
+                      <div className="flex mt-2 space-x-2">
+                        <Link href={`/seller/transaction/${item.id}`}>
+                          <Button className="text-sm" variant="outline">
+                            거래 상세
+                          </Button>
+                        </Link>
+                        <Button 
+                          onClick={() => deletePost(item.id)} 
+                          className="text-sm bg-red-500 hover:bg-red-600 text-white"
+                        >
+                          삭제
+                        </Button>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             )}
