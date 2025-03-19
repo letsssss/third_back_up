@@ -1,149 +1,250 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useAuth } from "@/contexts/auth-context"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Bell } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
-import { ko } from "date-fns/locale"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { toast } from "sonner"
 
-// 더미 알림 데이터
-const dummyNotifications = [
-  {
-    id: 1,
-    title: "티켓 예매 성공",
-    message: "세븐틴 콘서트 티켓 예매가 성공적으로 완료되었습니다.",
-    link: "/transaction/1",
-    isRead: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 30), // 30분 전
-  },
-  {
-    id: 2,
-    title: "취켓팅 알림",
-    message: "신청하신 아이유 콘서트의 취소표가 발생했습니다. 빠르게 확인해주세요!",
-    link: "/ticket-cancellation/3",
-    isRead: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2시간 전
-  },
-  {
-    id: 3,
-    title: "판매 완료",
-    message: "등록하신 BTS 콘서트 티켓이 판매 완료되었습니다.",
-    link: "/mypage",
-    isRead: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1일 전
-  },
-  {
-    id: 4,
-    title: "쿠폰 지급",
-    message: "신규 가입 축하 쿠폰이 지급되었습니다. 마이페이지에서 확인하세요.",
-    link: "/mypage",
-    isRead: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3), // 3일 전
-  },
-  {
-    id: 5,
-    title: "티켓 가격 인하",
-    message: "관심 등록하신 블랙핑크 콘서트 티켓의 가격이 인하되었습니다.",
-    link: "/ticket/4",
-    isRead: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5), // 5일 전
-  },
-]
+interface Notification {
+  id: number
+  title: string
+  message: string
+  link: string
+  isRead: boolean
+  createdAt: string
+  type: string
+  formattedDate?: string
+}
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState(dummyNotifications)
-  const [activeTab, setActiveTab] = useState("all")
+  const { user, logout } = useAuth()
+  const router = useRouter()
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const unreadCount = notifications.filter((notification) => !notification.isRead).length
+  useEffect(() => {
+    if (!user) {
+      router.push('/login?callbackUrl=/notifications')
+      return
+    }
 
-  const handleNotificationClick = (id: number) => {
-    // 알림을 읽음 상태로 변경
-    setNotifications(
-      notifications.map((notification) => (notification.id === id ? { ...notification, isRead: true } : notification)),
+    fetchNotifications()
+  }, [user, router])
+
+  // 날짜 포맷팅 함수 (날짜 오류 방지를 위해 JavaScript 내장 기능만 사용)
+  const formatDateToRelative = (dateStr: string): string => {
+    try {
+      if (!dateStr) return "방금 전";
+
+      // Date 객체 생성
+      const date = new Date(dateStr);
+      
+      // 유효하지 않은 날짜인 경우
+      if (isNaN(date.getTime())) {
+        return "방금 전";
+      }
+      
+      const now = new Date();
+      
+      // 미래 시간인 경우 - 서버/클라이언트 시간 차이를 고려해 10분까지는 허용
+      if (date > now) {
+        const diffMs = date.getTime() - now.getTime();
+        if (diffMs <= 10 * 60 * 1000) { // 10분 이내
+          return "방금 전";
+        }
+        // 심각한 미래 시간인 경우 
+        return "최근";
+      }
+      
+      // 시간 차이 계산
+      const diffMs = now.getTime() - date.getTime();
+      const seconds = Math.floor(diffMs / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      
+      // 상대적 시간 표시
+      if (days > 30) {
+        // 절대 날짜 형식으로 표시 (1달 이상 지난 경우)
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}.${month}.${day}`;
+      } else if (days > 0) {
+        return `${days}일 전`;
+      } else if (hours > 0) {
+        return `${hours}시간 전`;
+      } else if (minutes > 0) {
+        return `${minutes}분 전`;
+      } else {
+        return "방금 전";
+      }
+    } catch (error) {
+      console.error("날짜 변환 오류:", error);
+      return "방금 전";
+    }
+  };
+
+  const fetchNotifications = async () => {
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/notifications')
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || '알림을 불러오는데 실패했습니다')
+      }
+
+      const data = await response.json()
+      
+      // 데이터 가공 및 날짜 포맷팅
+      const processedNotifications = data.notifications.map((notification: any) => ({
+        ...notification,
+        formattedDate: formatDateToRelative(notification.createdAt)
+      }));
+      
+      setNotifications(processedNotifications)
+    } catch (error) {
+      console.error('알림 목록 로딩 오류:', error)
+      setError(error instanceof Error ? error.message : '알림을 불러오는데 실패했습니다')
+      toast.error('알림 목록을 불러오는데 실패했습니다')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleMarkAsRead = async (id: number) => {
+    try {
+      const response = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ notificationId: id }),
+      })
+
+      if (!response.ok) {
+        throw new Error('알림 상태 업데이트에 실패했습니다')
+      }
+
+      setNotifications(
+        notifications.map((notification) => 
+          notification.id === id ? { ...notification, isRead: true } : notification
+        )
+      )
+    } catch (error) {
+      console.error('알림 상태 업데이트 중 오류 발생:', error)
+      toast.error('알림 상태 업데이트에 실패했습니다')
+    }
+  }
+
+  const markAllAsRead = async () => {
+    const unreadNotifications = notifications.filter(n => !n.isRead)
+    if (unreadNotifications.length === 0) return
+
+    try {
+      await Promise.all(
+        unreadNotifications.map(notification =>
+          fetch('/api/notifications', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ notificationId: notification.id }),
+          })
+        )
+      )
+
+      setNotifications(notifications.map(notification => ({ ...notification, isRead: true })))
+      toast.success('모든 알림을 읽음 표시했습니다')
+    } catch (error) {
+      console.error('알림 상태 일괄 업데이트 중 오류 발생:', error)
+      toast.error('알림 상태 업데이트에 실패했습니다')
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto py-10 px-4">
+        <h1 className="text-2xl font-bold mb-6">알림</h1>
+        <div className="text-center py-10">로딩 중...</div>
+      </div>
     )
   }
 
-  const markAllAsRead = () => {
-    setNotifications(notifications.map((notification) => ({ ...notification, isRead: true })))
+  if (error) {
+    return (
+      <div className="container mx-auto py-10 px-4">
+        <h1 className="text-2xl font-bold mb-6">알림</h1>
+        <div className="text-center py-10 text-red-500">{error}</div>
+      </div>
+    )
   }
 
-  const filteredNotifications = notifications.filter((notification) => {
-    if (activeTab === "all") return true
-    if (activeTab === "unread") return !notification.isRead
-    return true
-  })
+  const unreadCount = notifications.filter(n => !n.isRead).length
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="container mx-auto px-4 py-6">
-          <Link href="/" className="flex items-center text-gray-600 hover:text-gray-900">
-            <ArrowLeft className="h-5 w-5 mr-2" />
-            <span>홈으로 돌아가기</span>
-          </Link>
-          <h1 className="text-3xl font-bold mt-4">알림</h1>
+    <div className="container mx-auto py-10 px-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">알림</h1>
+        {unreadCount > 0 && (
+          <button 
+            onClick={markAllAsRead}
+            className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
+          >
+            모두 읽음 표시
+          </button>
+        )}
+      </div>
+
+      {notifications.length === 0 ? (
+        <div className="text-center py-10 text-gray-500">알림이 없습니다</div>
+      ) : (
+        <div className="space-y-4">
+          {notifications.map((notification) => (
+            <Link
+              href={notification.link}
+              key={notification.id}
+              onClick={() => handleMarkAsRead(notification.id)}
+            >
+              <div className={`p-4 rounded-md border ${notification.isRead ? "bg-white" : "bg-blue-50"}`}>
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className={`font-medium ${notification.isRead ? "text-gray-800" : "text-blue-700"}`}>
+                    {notification.title}
+                  </h3>
+                  <span className="text-xs text-gray-500">
+                    {notification.formattedDate}
+                  </span>
+                </div>
+                <p className="text-gray-600">{notification.message}</p>
+                <div className="mt-2">
+                  <span className={`inline-block px-2 py-1 text-xs rounded-full ${
+                    notification.type === 'TICKET_REQUEST' 
+                      ? 'bg-blue-100 text-blue-800'
+                      : notification.type === 'PURCHASE_COMPLETE'
+                      ? 'bg-green-100 text-green-800'
+                      : notification.type === 'SYSTEM'
+                      ? 'bg-gray-100 text-gray-800'
+                      : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {notification.type === 'TICKET_REQUEST' 
+                      ? '취켓팅 신청'
+                      : notification.type === 'PURCHASE_COMPLETE'
+                      ? '구매 완료'
+                      : notification.type === 'SYSTEM'
+                      ? '시스템'
+                      : '알림'}
+                  </span>
+                </div>
+              </div>
+            </Link>
+          ))}
         </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-8">
-        <div className="max-w-3xl mx-auto">
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            <div className="p-4 flex items-center justify-between border-b">
-              <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
-                <TabsList className="grid w-full max-w-md grid-cols-2">
-                  <TabsTrigger value="all">전체</TabsTrigger>
-                  <TabsTrigger value="unread">읽지 않음 {unreadCount > 0 && `(${unreadCount})`}</TabsTrigger>
-                </TabsList>
-              </Tabs>
-
-              {unreadCount > 0 && (
-                <Button variant="outline" size="sm" onClick={markAllAsRead} className="ml-4 whitespace-nowrap">
-                  모두 읽음 표시
-                </Button>
-              )}
-            </div>
-
-            <div className="divide-y">
-              {filteredNotifications.length > 0 ? (
-                filteredNotifications.map((notification) => (
-                  <Link
-                    href={notification.link}
-                    key={notification.id}
-                    onClick={() => handleNotificationClick(notification.id)}
-                  >
-                    <div
-                      className={`p-6 hover:bg-gray-50 transition-colors ${notification.isRead ? "bg-white" : "bg-blue-50"}`}
-                    >
-                      <div className="flex items-start">
-                        <div
-                          className={`flex-shrink-0 mr-4 p-2 rounded-full ${notification.isRead ? "bg-gray-100" : "bg-blue-100"}`}
-                        >
-                          <Bell className={`h-5 w-5 ${notification.isRead ? "text-gray-500" : "text-blue-500"}`} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex justify-between items-start mb-1">
-                            <span className={`font-medium ${notification.isRead ? "text-gray-800" : "text-blue-700"}`}>
-                              {notification.title}
-                            </span>
-                            <span className="text-xs text-gray-500 ml-2">
-                              {formatDistanceToNow(notification.createdAt, { addSuffix: true, locale: ko })}
-                            </span>
-                          </div>
-                          <p className="text-gray-600">{notification.message}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                ))
-              ) : (
-                <div className="p-8 text-center text-gray-500">알림이 없습니다</div>
-              )}
-            </div>
-          </div>
-        </div>
-      </main>
+      )}
     </div>
   )
 }

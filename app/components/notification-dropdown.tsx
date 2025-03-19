@@ -16,8 +16,8 @@ import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-// API에서 받는 알림 데이터 타입 
-interface Notification {
+// API에서 받는 알림 데이터 타입
+interface ApiNotification {
   id: number
   title: string
   message: string
@@ -25,7 +25,18 @@ interface Notification {
   isRead: boolean
   createdAt: string
   type: string
-  formattedDate?: string // 가공된 날짜 (옵셔널)
+}
+
+// 컴포넌트 내부에서 사용하는 가공된 알림 데이터 타입
+interface Notification {
+  id: number
+  title: string
+  message: string
+  link: string
+  isRead: boolean
+  createdAt: string
+  formattedDate: string // 미리 가공된 시간 문자열
+  type: string
 }
 
 export function NotificationDropdown() {
@@ -38,7 +49,7 @@ export function NotificationDropdown() {
 
   const unreadCount = notifications.filter((notification) => !notification.isRead).length
 
-  // 컴포넌트 마운트 여부 확인 (하이드레이션 문제 해결)
+  // 컴포넌트가 클라이언트에 마운트되었는지 확인
   useEffect(() => {
     setIsMounted(true)
     
@@ -50,6 +61,13 @@ export function NotificationDropdown() {
       setIsMounted(false)
     }
   }, [user])
+
+  // 알림이 열릴 때만 데이터를 가져오도록 설정
+  useEffect(() => {
+    if (isOpen && user && notifications.length === 0) {
+      fetchNotifications()
+    }
+  }, [isOpen, user])
 
   // 순수 JavaScript로 구현한 날짜 포맷팅 함수
   const formatDateToRelative = (dateStr: string): string => {
@@ -72,7 +90,7 @@ export function NotificationDropdown() {
         if (diffMs <= 10 * 60 * 1000) { // 10분 이내
           return "방금 전";
         }
-        // 심각한 미래 시간인 경우 
+        // 심각한 미래 시간인 경우 (하이드레이션 오류 방지를 위해 정적 텍스트 반환)
         return "최근";
       }
       
@@ -202,10 +220,10 @@ export function NotificationDropdown() {
         return;
       }
       
-      // 알림 데이터 가공 (날짜 포맷 미리 처리)
-      const processedNotifications = data.notifications.map((notification: any) => ({
-        ...notification,
-        formattedDate: formatDateToRelative(notification.createdAt)
+      // API 응답 데이터를 가공하여 날짜 포맷팅을 미리 처리
+      const processedNotifications = data.notifications.map((item: ApiNotification) => ({
+        ...item,
+        formattedDate: formatDateToRelative(item.createdAt)
       }));
       
       setNotifications(processedNotifications);
@@ -304,7 +322,7 @@ export function NotificationDropdown() {
                         {notification.title}
                       </span>
                       <span className="text-xs text-gray-500">
-                        {notification.formattedDate || "방금 전"}
+                        {notification.formattedDate}
                       </span>
                     </div>
                     <p className="text-sm text-gray-600 line-clamp-2">{notification.message}</p>
@@ -344,5 +362,4 @@ export function NotificationDropdown() {
       </DropdownMenuContent>
     </DropdownMenu>
   )
-}
-
+} 
