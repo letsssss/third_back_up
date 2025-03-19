@@ -20,6 +20,9 @@ model User {
   updatedAt     DateTime @updatedAt
   refreshToken  String?  // JWT 토큰 관리를 위한 필드
   posts         Post[]   // 사용자가 작성한 글
+  notifications Notification[] // 사용자가 받은 알림
+  purchases     Purchase[] @relation("Buyer")  // 사용자가 구매한 티켓
+  sales         Purchase[] @relation("Seller") // 사용자가 판매한 티켓
 }
 
 enum Role {
@@ -48,5 +51,43 @@ model Post {
   ticketPrice BigInt?
   contactInfo String?
   status      String?   @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  
+  // 알림 관계 추가
+  notifications Notification[]
+  
+  // 구매 관계 추가
+  purchases   Purchase[]
+}
+
+// 알림 모델
+model Notification {
+  id         Int       @id @default(autoincrement())
+  userId     Int       // 알림을 받을 사용자 ID
+  user       User      @relation(fields: [userId], references: [id])
+  postId     Int?      // 관련 게시글 ID (선택 사항)
+  post       Post?     @relation(fields: [postId], references: [id])
+  message    String    // 알림 메시지
+  type       String    // 알림 유형 (PURCHASE, COMMENT, SYSTEM 등)
+  isRead     Boolean   @default(false) // 읽음 여부
+  createdAt  DateTime  @default(now())
+}
+
+// 구매 모델
+model Purchase {
+  id                Int       @id @default(autoincrement())
+  buyerId           Int       // 구매자 ID
+  buyer             User      @relation("Buyer", fields: [buyerId], references: [id])
+  sellerId          Int       // 판매자 ID
+  seller            User      @relation("Seller", fields: [sellerId], references: [id])
+  postId            Int       // 관련 게시글 ID
+  post              Post      @relation(fields: [postId], references: [id])
+  quantity          Int       @default(1) // 구매 수량
+  totalPrice        BigInt    // 총 구매 가격
+  status            String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, CANCELLED
+  paymentMethod     String?   // 결제 방법
+  selectedSeats     String?   // 선택한 좌석 (JSON 문자열로 저장)
+  phoneNumber       String?   // 연락처
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 

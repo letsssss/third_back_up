@@ -34,6 +34,16 @@ interface Sale {
   status: string;
 }
 
+// 알림 타입 정의
+interface Notification {
+  id: number;
+  message: string;
+  type: string;
+  isRead: boolean;
+  createdAt: string;
+  postId?: number;
+}
+
 export default function MyPage() {
   const [activeTab, setActiveTab] = useState("profile")
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false)
@@ -41,6 +51,10 @@ export default function MyPage() {
   const router = useRouter()
   const [ongoingSales, setOngoingSales] = useState<Sale[]>([])
   const [isLoadingSales, setIsLoadingSales] = useState(false)
+  const [ongoingPurchases, setOngoingPurchases] = useState<any[]>([])
+  const [isLoadingPurchases, setIsLoadingPurchases] = useState(false)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
   const [mounted, setMounted] = useState(false)
 
   // 마운트 확인
@@ -56,32 +70,48 @@ export default function MyPage() {
     }
   }, [user, isLoading, router, mounted])
 
-  // user와 activeTab이 변경될 때 판매 목록 가져오기
+  // 초기 데이터 로드
   useEffect(() => {
     if (user) {
-      fetchOngoingSales();
+      // 판매 목록은 탭이 선택될 때 불러옴
+      // 알림은 페이지 로드 시 항상 가져옴 (알림 카운트 표시를 위해)
+      fetchNotifications();
+    }
+  }, [user]);
+
+  // user와 activeTab이 변경될 때 데이터 가져오기
+  useEffect(() => {
+    if (user) {
+      if (activeTab === 'sales') {
+        fetchOngoingSales();
+      } else if (activeTab === 'purchases') {
+        fetchOngoingPurchases();
+      }
     }
   }, [user, activeTab]);
 
+  // 읽지 않은 알림 카운트
+  const unreadNotificationCount = notifications.filter(n => !n.isRead).length;
+
   // 판매 중인 상품 목록 가져오기
-  const fetchOngoingSales = async () => {
-    if (!user) return;
-    
-    setIsLoadingSales(true);
-    try {
+    const fetchOngoingSales = async () => {
+      if (!user) return;
+      
+      setIsLoadingSales(true);
+      try {
       // 요청 URL에 userId 파라미터 추가
       console.log("판매 목록 불러오기 시도... 사용자 ID:", user.id);
       const response = await fetch(`/api/posts?userId=${user.id}`);
       
       console.log("API 응답 상태:", response.status, response.statusText);
-      
-      if (!response.ok) {
+        
+        if (!response.ok) {
         const errorData = await response.text();
         console.error("API 오류 응답:", errorData);
-        throw new Error('판매 목록을 불러오는데 실패했습니다.');
-      }
-      
-      const data = await response.json();
+          throw new Error('판매 목록을 불러오는데 실패했습니다.');
+        }
+        
+        const data = await response.json();
       console.log("받은 데이터:", data);
       
       if (!data.posts || !Array.isArray(data.posts)) {
@@ -89,28 +119,209 @@ export default function MyPage() {
         setOngoingSales([]);
         return;
       }
-      
-      // API 응답을 화면에 표시할 형식으로 변환
-      const salesData = data.posts.map((post: any) => ({
-        id: post.id,
+        
+        // API 응답을 화면에 표시할 형식으로 변환
+        const salesData = data.posts.map((post: any) => ({
+          id: post.id,
         title: post.title || post.eventName || "제목 없음",
-        date: post.eventDate || new Date(post.createdAt).toLocaleDateString(),
-        price: `${post.ticketPrice?.toLocaleString() || '가격 정보 없음'}원`,
-        status: post.category === 'TICKET_CANCELLATION' ? "취켓팅 판매중" : "판매중"
-      }));
-      
+          date: post.eventDate || new Date(post.createdAt).toLocaleDateString(),
+          price: `${post.ticketPrice?.toLocaleString() || '가격 정보 없음'}원`,
+          status: post.category === 'TICKET_CANCELLATION' ? "취켓팅 판매중" : "판매중"
+        }));
+        
       console.log("변환된 판매 데이터:", salesData);
-      setOngoingSales(salesData);
-    } catch (error) {
-      console.error('판매 목록 로딩 오류:', error);
-      toast.error('판매 목록을 불러오는데 실패했습니다.');
+        setOngoingSales(salesData);
+      } catch (error) {
+        console.error('판매 목록 로딩 오류:', error);
+        toast.error('판매 목록을 불러오는데 실패했습니다.');
       // 더미 데이터로 대체
-      setOngoingSales([
+        setOngoingSales([
         { id: 1, title: "아이브 팬미팅 [더미 데이터]", date: "2024-04-05", price: "88,000원", status: "판매중" },
         { id: 2, title: "웃는 남자 [더미 데이터]", date: "2024-01-09", price: "110,000원", status: "구매자 입금 대기중" },
+        ]);
+      } finally {
+        setIsLoadingSales(false);
+      }
+    };
+
+  // 구매 중인 상품 목록 가져오기
+  const fetchOngoingPurchases = async () => {
+    if (!user) return;
+    
+    setIsLoadingPurchases(true);
+    try {
+      // 구매 목록 API 호출
+      console.log("구매 목록 불러오기 시도... 사용자 ID:", user.id);
+      const response = await fetch('/api/purchase');
+      
+      console.log("구매 API 응답 상태:", response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error("구매 API 오류 응답:", errorData);
+        throw new Error('구매 목록을 불러오는데 실패했습니다.');
+      }
+      
+      const data = await response.json();
+      console.log("받은 구매 데이터:", data);
+      
+      if (!data.purchases || !Array.isArray(data.purchases)) {
+        console.error("API 응답에 purchases 배열이 없거나 유효하지 않습니다:", data);
+        setOngoingPurchases([]);
+        return;
+      }
+      
+      // API 응답을 화면에 표시할 형식으로 변환
+      const purchasesData = data.purchases.map((purchase: any) => ({
+        id: purchase.id,
+        title: purchase.post?.title || purchase.post?.eventName || "제목 없음",
+        date: purchase.post?.eventDate || new Date(purchase.createdAt).toLocaleDateString(),
+        price: `${purchase.totalPrice?.toLocaleString() || '가격 정보 없음'}원`,
+        status: getStatusText(purchase.status),
+        sellerId: purchase.sellerId
+      }));
+      
+      console.log("변환된 구매 데이터:", purchasesData);
+      setOngoingPurchases(purchasesData);
+    } catch (error) {
+      console.error('구매 목록 로딩 오류:', error);
+      toast.error('구매 목록을 불러오는데 실패했습니다.');
+      // 더미 데이터로 대체
+      setOngoingPurchases([
+        { id: 1, title: "세븐틴 콘서트 [더미 데이터]", date: "2024-03-20", price: "165,000원", status: "입금 대기중" },
+        { id: 2, title: "데이식스 전국투어 [더미 데이터]", date: "2024-02-01", price: "99,000원", status: "배송 준비중" },
       ]);
     } finally {
-      setIsLoadingSales(false);
+      setIsLoadingPurchases(false);
+    }
+  };
+
+  // 상태 텍스트 변환 함수
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'PENDING': return '입금 대기중';
+      case 'PROCESSING': return '처리 중';
+      case 'COMPLETED': return '완료됨';
+      case 'CANCELLED': return '취소됨';
+      default: return '상태 불명';
+    }
+  };
+
+  // 알림 목록 가져오기
+  const fetchNotifications = async () => {
+    if (!user) return;
+    
+    setIsLoadingNotifications(true);
+    try {
+      const response = await fetch('/api/notifications');
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        let errorMessage = '알림 목록을 불러오는데 실패했습니다.';
+        
+        if (errorData.error) {
+          errorMessage = errorData.error;
+          
+          switch (errorData.code) {
+            case 'AUTH_ERROR':
+              errorMessage = '인증이 만료되었습니다. 다시 로그인해주세요.';
+              break;
+            case 'USER_NOT_FOUND':
+              errorMessage = '사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.';
+              break;
+            case 'USER_CREATE_ERROR':
+              errorMessage = '사용자 정보 생성에 실패했습니다. 잠시 후 다시 시도해주세요.';
+              break;
+            case 'DB_CONNECTION_ERROR':
+              errorMessage = '서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
+              break;
+            case 'DB_TIMEOUT_ERROR':
+              errorMessage = '서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.';
+              break;
+            case 'DB_SCHEMA_ERROR':
+              errorMessage = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
+              break;
+            case 'NETWORK_ERROR':
+              errorMessage = '네트워크 연결을 확인해주세요.';
+              break;
+          }
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.notifications || !Array.isArray(data.notifications)) {
+        setNotifications([]);
+        return;
+      }
+      
+      // 알림 데이터 가공 (날짜 포맷 변경 등)
+      const notificationsData = data.notifications.map((notification: any) => ({
+        ...notification,
+        createdAt: new Date(notification.createdAt).toLocaleString('ko-KR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      }));
+      
+      setNotifications(notificationsData);
+    } catch (error) {
+      console.error('알림 목록 로딩 오류:', error);
+      toast.error('알림 목록을 불러오는데 실패했습니다.');
+      // 더미 데이터로 대체
+      setNotifications([
+        { 
+          id: 1, 
+          message: "홍길동님이 '아이브 콘서트' 공연의 [R석] 좌석에 대한 취켓팅을 신청했습니다.", 
+          type: "PURCHASE", 
+          isRead: false, 
+          createdAt: "2024-03-18 14:25", 
+          postId: 1 
+        },
+        { 
+          id: 2, 
+          message: "시스템 정기 점검 안내: 3월 20일 새벽 2시부터 5시까지 서비스 이용이 제한됩니다.", 
+          type: "SYSTEM", 
+          isRead: true, 
+          createdAt: "2024-03-15 09:00" 
+        }
+      ]);
+    } finally {
+      setIsLoadingNotifications(false);
+    }
+  };
+
+  // 알림 읽음 상태 업데이트
+  const markNotificationAsRead = async (notificationId: number) => {
+    try {
+      const response = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ notificationId }),
+      });
+
+      if (!response.ok) {
+        throw new Error('알림 상태 업데이트에 실패했습니다.');
+      }
+
+      // 알림 목록 업데이트
+      setNotifications(prev => 
+        prev.map(notification => 
+          notification.id === notificationId 
+            ? { ...notification, isRead: true } 
+            : notification
+        )
+      );
+    } catch (error) {
+      console.error('알림 상태 업데이트 오류:', error);
+      toast.error('알림 상태를 업데이트하는데 실패했습니다.');
     }
   };
 
@@ -136,11 +347,11 @@ export default function MyPage() {
 
       const data = await response.json();
       console.log("삭제 응답:", data);
-
+      
       if (!response.ok) {
         throw new Error(data.message || '게시물 삭제에 실패했습니다.');
       }
-
+      
       // 성공적으로 삭제된 경우 목록에서 제거
       setOngoingSales(prev => prev.filter(sale => sale.id !== postId));
       
@@ -234,6 +445,48 @@ export default function MyPage() {
             >
               <FaTrash />
             </button>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // 진행 중인 구매 탭 렌더링 함수
+  const renderOngoingPurchasesTab = () => {
+    if (isLoadingPurchases) {
+      return <div className="text-center py-8"><Loader size={30} /></div>;
+    }
+
+    if (ongoingPurchases.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <p className="text-gray-500 mb-4">구매 내역이 없습니다</p>
+          <button
+            onClick={() => router.push('/tickets')}
+            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+          >
+            티켓 구매하러 가기
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {ongoingPurchases.map((purchase) => (
+          <div key={purchase.id} className="border rounded-lg p-4">
+            <h3 className="font-medium">{purchase.title}</h3>
+            <p className="text-sm text-gray-500">날짜: {purchase.date}</p>
+            <p className="text-sm text-gray-500">가격: {purchase.price}</p>
+            <p className="text-sm font-medium text-primary">{purchase.status}</p>
+            {purchase.sellerId && (
+              <Link 
+                href={`/seller/${purchase.sellerId}`} 
+                className="text-sm text-blue-600 hover:underline mt-2 inline-block"
+              >
+                판매자 정보 보기
+              </Link>
+            )}
           </div>
         ))}
       </div>
@@ -353,18 +606,42 @@ export default function MyPage() {
               프로필
             </button>
             <button
-              className={`flex-1 py-4 px-6 text-center ${activeTab === "ongoing-purchases" ? "bg-gray-100 font-semibold" : ""}`}
-              onClick={() => setActiveTab("ongoing-purchases")}
+              className={`flex-1 py-4 px-6 text-center ${activeTab === "purchases" ? "bg-gray-100 font-semibold" : ""}`}
+              onClick={() => setActiveTab("purchases")}
             >
               <ShoppingBag className="inline-block mr-2" />
-              구매중인 상품
+              구매 내역
             </button>
             <button
-              className={`flex-1 py-4 px-6 text-center ${activeTab === "ongoing-sales" ? "bg-gray-100 font-semibold" : ""}`}
-              onClick={() => setActiveTab("ongoing-sales")}
+              className={`flex-1 py-4 px-6 text-center ${activeTab === "sales" ? "bg-gray-100 font-semibold" : ""}`}
+              onClick={() => setActiveTab("sales")}
             >
               <Tag className="inline-block mr-2" />
-              판매중인 상품
+              판매 내역
+            </button>
+            <button
+              className={`flex-1 py-4 px-6 text-center ${activeTab === "notifications" ? "bg-gray-100 font-semibold" : ""}`}
+              onClick={() => setActiveTab("notifications")}
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                className="inline-block mr-2 h-5 w-5" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+              >
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+              알림
+              {unreadNotificationCount > 0 && (
+                <span className="inline-flex items-center justify-center ml-2 h-5 w-5 text-xs font-semibold text-white bg-red-500 rounded-full">
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </span>
+              )}
             </button>
           </div>
 
@@ -391,33 +668,57 @@ export default function MyPage() {
               </div>
             )}
 
-            {activeTab === "ongoing-purchases" && (
-              <div>
-                <h2 className="text-xl font-semibold mb-4">구매중인 상품</h2>
-                {ongoingPurchases.length > 0 ? (
-                  ongoingPurchases.map((item) => (
-                    <div key={item.id} className="border-b py-4 last:border-b-0">
-                      <h3 className="font-medium">{item.title}</h3>
-                      <p className="text-sm text-gray-600">{item.date}</p>
-                      <p className="text-sm font-semibold">{item.price}</p>
-                      <p className="text-sm text-blue-600">{item.status}</p>
-                      <Link href={`/transaction/${item.id}`}>
-                        <Button className="mt-2 text-sm" variant="outline">
-                          거래 상세
-                        </Button>
-                      </Link>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500">구매중인 상품이 없습니다.</p>
-                )}
-              </div>
-            )}
+            {activeTab === "purchases" && renderOngoingPurchasesTab()}
 
-            {activeTab === "ongoing-sales" && (
+            {activeTab === "sales" && (
               <div>
                 <h2 className="text-xl font-semibold mb-4">판매중인 상품</h2>
                 {renderOngoingSalesTab()}
+              </div>
+            )}
+
+            {activeTab === "notifications" && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4">알림 목록</h2>
+                {isLoadingNotifications ? (
+                  <div className="flex justify-center py-4">
+                    <Loader size={24} />
+                  </div>
+                ) : notifications.length > 0 ? (
+                  <div className="space-y-4">
+                    {notifications.map((notification) => (
+                      <div 
+                        key={notification.id} 
+                        className={`border-l-4 ${notification.isRead ? 'border-gray-300' : 'border-blue-500'} p-4 bg-white shadow-sm rounded-lg`}
+                        onClick={() => !notification.isRead && markNotificationAsRead(notification.id)}
+                      >
+                      <div className="flex justify-between items-start">
+                          <div className={`${notification.isRead ? 'text-gray-700' : 'text-black font-medium'}`}>
+                            {notification.message}
+                          </div>
+                          <div className="ml-2 flex-shrink-0">
+                            <span className={`inline-block px-2 py-1 text-xs rounded-full ${notification.type === 'PURCHASE' ? 'bg-blue-100 text-blue-800' : notification.type === 'SYSTEM' ? 'bg-gray-100 text-gray-800' : 'bg-green-100 text-green-800'}`}>
+                              {notification.type === 'PURCHASE' ? '취켓팅 신청' : notification.type === 'SYSTEM' ? '시스템' : '댓글'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-2 flex justify-between">
+                          <span>{notification.createdAt}</span>
+                          {notification.postId && (
+                            <Link 
+                              href={`/ticket-cancellation/${notification.postId}`}
+                              className="text-blue-600 hover:underline"
+                            >
+                              글 보기
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    </div>
+                ) : (
+                  <p className="text-gray-500">알림이 없습니다.</p>
+                )}
               </div>
             )}
           </div>

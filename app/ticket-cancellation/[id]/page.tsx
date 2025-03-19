@@ -263,11 +263,54 @@ export default function TicketCancellationDetail() {
 
     setIsSubmitting(true)
 
-    // 실제로는 API 호출을 해야 합니다
-    setTimeout(() => {
-      setIsSubmitting(false)
-      setIsSuccess(true)
-    }, 1500)
+    // 선택한 좌석 정보 구성
+    const selectedSeatLabels = selectedSeats
+      .map((seatId) => {
+        const seat = ticketData.seatOptions.find((s) => s.id === seatId)
+        return seat ? seat.label : ""
+      })
+      .filter(Boolean)
+      .join(", ")
+
+    // 티켓 구매 요청
+    const purchaseTicket = async () => {
+      try {
+        // 티켓 구매 API 호출
+        const response = await fetch('/api/ticket-purchase', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            postId: parseInt(params.id as string),
+            quantity: selectedSeats.length,
+            selectedSeats: selectedSeatLabels,
+            phoneNumber: phoneNumber,
+            paymentMethod: '계좌이체'
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || '구매 요청 중 오류가 발생했습니다.');
+        }
+
+        const data = await response.json();
+        console.log("구매 응답:", data);
+        
+        setIsSuccess(true)
+        setTimeout(() => {
+          router.push("/mypage?tab=purchases")
+        }, 5000)
+      } catch (error) {
+        console.error('구매 처리 오류:', error);
+        toast.error(error instanceof Error ? error.message : '구매 요청 중 오류가 발생했습니다.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    purchaseTicket();
   }
 
   // 로딩 중 표시

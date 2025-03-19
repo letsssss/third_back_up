@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
+import { NotificationDropdown } from "@/components/notification-dropdown"
 
 const categories = [
   { name: "콘서트", href: "/category/콘서트" },
@@ -255,7 +256,7 @@ export default function TicketCancellationPage() {
               </Link>
               <Link
                 href="/ticket-cancellation"
-                className="text-[#0061FF] font-medium transition-colors border-r pr-6 whitespace-nowrap"
+                className="text-gray-700 hover:text-[#0061FF] transition-colors border-r pr-6 whitespace-nowrap"
               >
                 취켓팅
               </Link>
@@ -264,12 +265,22 @@ export default function TicketCancellationPage() {
               </Link>
             </div>
             <div className="flex items-center space-x-6">
-              <AuthButtons />
-              <Link href="/cart" className="text-gray-700 hover:text-[#0061FF] transition-colors whitespace-nowrap">
-                장바구니
-              </Link>
+              {user ? (
+                <>
+                  <div className="text-gray-700">
+                    <span className="font-medium text-[#0061FF]">{user.name}</span>님 환영합니다
+                  </div>
+                  <NotificationDropdown />
+                  <AuthButtons />
+                  <Link href="/cart" className="text-gray-700 hover:text-[#0061FF] transition-colors whitespace-nowrap">
+                    장바구니
+                  </Link>
+                </>
+              ) : (
+                <AuthButtons />
+              )}
               <button
-                onClick={() => router.push('/sell')}
+                onClick={() => router.push("/sell")}
                 className="px-4 py-2 bg-[#0061FF] text-white rounded-md hover:bg-[#0052D6] transition-colors whitespace-nowrap"
               >
                 취켓팅 등록

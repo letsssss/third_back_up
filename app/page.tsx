@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 
 import type React from "react"
@@ -48,6 +48,11 @@ export default function Page() {
   const [searchQuery, setSearchQuery] = useState("")
   const router = useRouter()
   const { user, logout } = useAuth()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const handleTicketSaleClick = () => {
     if (user) {
@@ -92,7 +97,12 @@ export default function Page() {
               </Link>
             </div>
             <div className="flex items-center space-x-6">
-              {user ? (
+              {!mounted ? (
+                // 서버 사이드 렌더링 중일 때는 아무것도 표시하지 않음
+                <div className="text-gray-700">
+                  로딩 중...
+                </div>
+              ) : user ? (
                 <>
                   <div className="text-gray-700">
                     <span className="font-medium text-[#0061FF]">{user.name}</span>님 환영합니다
@@ -109,9 +119,13 @@ export default function Page() {
                   </Link>
                 </>
               ) : (
-                <Link href="/login" className="text-gray-700 hover:text-[#0061FF] transition-colors">
-                  로그인
-                </Link>
+                <>
+                  <div className="text-gray-700">
+                    <Link href="/login" className="hover:text-[#0061FF] transition-colors">
+                      로그인
+                    </Link>
+                  </div>
+                </>
               )}
               <button
                 onClick={handleTicketSaleClick}

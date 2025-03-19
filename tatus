@@ -1,0 +1,5 @@
+[33mcommit 328ce5fbdef10a2516e74467d8ff72968a5b2d58[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: letsssss <wlstjd1590@naver.com>
+Date:   Wed Mar 19 13:21:54 2025 +0900
+
+    Fix: 알림 컴포넌트의 날짜 처리 문제 해결 및 하이드레이션 오류 수정
