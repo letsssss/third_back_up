@@ -13,8 +13,8 @@ declare global {
 }
 
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { hashPassword, generateAccessToken, generateRefreshToken, checkDuplicateEmail } from "@/lib/auth";
+import prisma from "@/lib/prisma";
+import { hashPassword, generateAccessToken, generateRefreshToken } from "@/lib/auth";
 import { addMemoryUser } from "../me/route"; // 개발 환경 테스트용
 
 // 이메일 유효성 검사 함수
@@ -59,10 +59,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "비밀번호는 최소 6자 이상이어야 합니다." }, { status: 400 });
     }
 
-    // 이메일을 소문자로 변환하여 일관성 유지
-    const emailLowerCase = email.toLowerCase();
-    
     try {
+      // 이메일을 소문자로 변환하여 일관성 유지
+      const emailLowerCase = email.toLowerCase();
+      
       // 이메일 중복 검사
       const existingUser = await prisma.user.findUnique({
         where: { email: emailLowerCase },
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       // 비밀번호 해시 처리
       const hashedPassword = await hashPassword(password);
 
-      // 사용자 생성
+      // 사용자 생성 - 실제 데이터베이스에 저장
       const user = await prisma.user.create({
         data: {
           email: emailLowerCase,
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
         },
       });
 
-      console.log("데이터베이스에 사용자 생성 성공:", user.email);
+      console.log("데이터베이스에 사용자 생성 완료:", user.id);
 
       // JWT 토큰 생성
       const accessToken = generateAccessToken(user.id, user.email, user.role);
@@ -117,8 +117,9 @@ export async function POST(request: Request) {
         path: "/",
       });
 
+      console.log("회원가입 성공:", userWithoutSensitiveInfo.email);
       return response;
-    } catch (dbError: any) {
+    } catch (dbError: any) {  // any 타입으로 처리
       console.error("데이터베이스 오류:", dbError);
       
       // Prisma 에러 분석

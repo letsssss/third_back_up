@@ -110,109 +110,60 @@ export function NotificationDropdown() {
     
     setIsLoadingNotifications(true);
     try {
-      const response = await fetch('/api/notifications');
-      
+      const response = await fetch('/api/notifications', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // 쿠키 포함
+      });
+
       if (!response.ok) {
-        let errorData;
-        let errorMessage = '알림을 불러오는데 실패했습니다.';
-        let errorCode = 'UNKNOWN_ERROR';
+        if (response.status === 500) {
+          console.warn('서버 내부 오류로 알림을 가져오지 못했습니다.');
+        } else {
+          console.warn(`알림을 가져오는데 실패했습니다. 상태 코드: ${response.status}`);
+        }
+        throw new Error(`API 호출 실패 (${response.status})`);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.error('서버 응답이 JSON이 아닙니다:', contentType);
         
-        try {
-          const contentType = response.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            errorData = await response.json();
-            if (errorData.error) {
-              errorMessage = errorData.error;
-              errorCode = errorData.code;
-            }
-          } else {
-            const textError = await response.text();
-            console.error('서버 응답이 JSON이 아닙니다:', textError);
-          }
-        } catch (parseError) {
-          console.error('응답 파싱 오류:', parseError);
+        const responseText = await response.text();
+        console.error('응답 내용 (일부):', responseText.substring(0, 200));
+        
+        if (responseText.includes('<!DOCTYPE html>')) {
+          console.error('서버 오류 페이지가 반환되었습니다. 서버를 확인하세요.');
+          throw new Error('서버 오류가 발생했습니다.');
         }
         
-        let shouldRedirect = false;
-        let shouldLogout = false;
-        
-        switch (errorCode) {
-          case 'AUTH_ERROR':
-            console.log('인증 오류 발생, 로그인 페이지로 이동');
-            errorMessage = '인증이 만료되었습니다. 다시 로그인해주세요.';
-            shouldRedirect = true;
-            break;
-          case 'USER_NOT_FOUND':
-            console.log('사용자를 찾을 수 없음, 로그아웃 처리');
-            errorMessage = '사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.';
-            shouldLogout = true;
-            break;
-          case 'USER_CREATE_ERROR':
-            console.log('사용자 생성 실패');
-            errorMessage = '사용자 정보 생성에 실패했습니다. 잠시 후 다시 시도해주세요.';
-            shouldLogout = true;
-            break;
-          case 'DB_CONNECTION_ERROR':
-            console.error('데이터베이스 연결 오류');
-            errorMessage = '서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
-            break;
-          case 'DB_TIMEOUT_ERROR':
-            console.error('데이터베이스 시간 초과');
-            errorMessage = '서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.';
-            break;
-          case 'DB_SCHEMA_ERROR':
-            console.error('데이터베이스 스키마 오류');
-            errorMessage = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
-            break;
-          case 'NETWORK_ERROR':
-            errorMessage = '네트워크 연결을 확인해주세요.';
-            break;
-        }
-        
-        toast.error(errorMessage);
-        
-        if (shouldLogout) {
-          await logout();
-          router.push('/login?callbackUrl=/mypage');
-          return;
-        }
-        
-        if (shouldRedirect) {
-          router.push('/login?callbackUrl=/mypage');
-          return;
-        }
-        
-        setNotifications([]);
-        return;
+        throw new Error('서버 응답이 JSON 형식이 아닙니다.');
+      }
+
+      const data = await response.json();
+      
+      if (!data || !Array.isArray(data.notifications)) {
+        console.error('알림 데이터 형식이 올바르지 않습니다:', data);
+        throw new Error('잘못된 알림 데이터 형식');
       }
       
-      let data;
-      try {
-        data = await response.json();
-      } catch (parseError) {
-        console.error('알림 데이터 파싱 오류:', parseError);
-        toast.error('알림 데이터를 처리하는 중 오류가 발생했습니다.');
-        setNotifications([]);
-        return;
-      }
+      const sortedNotifications = [...data.notifications].sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
       
-      if (!data.notifications || !Array.isArray(data.notifications)) {
-        console.error('유효하지 않은 알림 데이터:', data);
-        setNotifications([]);
-        return;
-      }
-      
-      // 알림 데이터 가공 (날짜 포맷 미리 처리)
-      const processedNotifications = data.notifications.map((notification: any) => ({
-        ...notification,
-        formattedDate: formatDateToRelative(notification.createdAt)
-      }));
-      
-      setNotifications(processedNotifications);
+      setNotifications(sortedNotifications);
     } catch (error) {
-      console.error('알림 목록 로딩 오류:', error);
-      toast.error('알림 목록을 불러오는데 실패했습니다.');
-      setNotifications([]);
+      console.error('알림 가져오기 오류:', error);
+      
+      if (process.env.NODE_ENV === 'development') {
+        toast.error(`알림 로드 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+      } else {
+        toast.error("알림을 불러올 수 없습니다. 잠시 후 다시 시도해주세요.");
+      }
+      
+      setNotifications(prev => prev || []);
     } finally {
       setIsLoadingNotifications(false);
     }

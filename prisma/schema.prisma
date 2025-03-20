@@ -23,6 +23,9 @@ model User {
   notifications Notification[] // 사용자가 받은 알림
   purchases     Purchase[] @relation("Buyer")  // 사용자가 구매한 티켓
   sales         Purchase[] @relation("Seller") // 사용자가 판매한 티켓
+  sentMessages     Message[] @relation("Sender")     // 보낸 메시지
+  receivedMessages Message[] @relation("Receiver")   // 받은 메시지
+  roomParticipations RoomParticipant[]
 }
 
 enum Role {
@@ -89,5 +92,65 @@ model Purchase {
   phoneNumber       String?   // 연락처
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+  messages          Message[] // 거래와 관련된 메시지들
+  room              Room?     // 구매와 연결된 채팅방
+}
+
+// 채팅방 모델 추가
+model Room {
+  id              Int       @id @default(autoincrement())
+  name            String    @unique // 고유 채팅방 식별자
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  // null: 둘 다 읽기 가능, 특정 유저의 아이디: 해당 유저만 읽기 불가능 (채팅방 나가기 기능)
+  chatInvisibleTo Int?
+  lastChat        String?   // 마지막 채팅 내용
+  timeOfLastChat  DateTime? // 마지막 채팅 시간
+  
+  // 채팅방과 연결된 구매 정보
+  purchaseId      Int?      @unique
+  purchase        Purchase? @relation(fields: [purchaseId], references: [id])
+  
+  // 채팅방과 연결된 메시지들
+  messages        Message[]
+  
+  // 채팅방 참여자
+  participants    RoomParticipant[]
+}
+
+// 채팅방 참여자 모델
+model RoomParticipant {
+  id        Int      @id @default(autoincrement())
+  roomId    Int
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+  
+  @@unique([roomId, userId]) // 한 사용자는 한 채팅방에 한 번만 참여할 수 있음
+}
+
+// 메시지 모델 수정
+model Message {
+  id           Int      @id @default(autoincrement())
+  senderId     Int      // 발신자 ID
+  sender       User     @relation("Sender", fields: [senderId], references: [id])
+  receiverId   Int      // 수신자 ID
+  receiver     User     @relation("Receiver", fields: [receiverId], references: [id])
+  content      String   // 메시지 내용
+  isRead       Boolean  @default(false) // 읽음 여부
+  createdAt    DateTime @default(now())
+  
+  // 채팅방 정보 추가
+  roomId       Int?
+  room         Room?    @relation(fields: [roomId], references: [id])
+  
+  // 구매 정보
+  purchaseId   Int?     // 관련 거래 ID (옵션)
+  purchase     Purchase? @relation(fields: [purchaseId], references: [id])
+  
+  @@index([roomId])
+  @@index([senderId])
+  @@index([receiverId])
 }
 

@@ -12,7 +12,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "이지티켓",
   description: "쉽고 빠른 티켓 거래 플랫폼",
-    generator: 'v0.dev'
+  generator: 'v0.dev'
 }
 
 export default function RootLayout({
@@ -33,7 +33,3 @@ export default function RootLayout({
     </html>
   )
 }
-
-
-
-import './globals.css'

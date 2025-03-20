@@ -5,10 +5,7 @@ import { NextRequest } from "next/server";
 import { NextAuthOptions } from 'next-auth';
 import { JWT } from 'next-auth/jwt';
 import { getServerSession } from 'next-auth/next';
-import { NextResponse } from 'next/server';
-
-// 개발 환경인지 확인
-const isDevelopment = process.env.NODE_ENV === 'development';
+import jwt from 'jsonwebtoken';
 
 // 세션에 id 필드를 추가하기 위한 타입 확장
 declare module "next-auth" {
@@ -19,6 +16,12 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
     }
+  }
+}
+
+declare module 'next-auth/jwt' {
+  interface JWT {
+    id: string;
   }
 }
 
@@ -48,6 +51,9 @@ export const authOptions: NextAuthOptions = {
     },
   },
 };
+
+// 개발 환경인지 확인하는 함수
+export const isDevelopment = process.env.NODE_ENV === 'development';
 
 // 사용자 비밀번호를 해싱합니다.
 export async function hashPassword(password: string): Promise<string> {
@@ -80,10 +86,15 @@ export function generateRefreshToken(userId: number): string {
   );
 }
 
-// JWT 토큰 검증 함수 - 직접 구현하여 외부 의존성 제거
-export function verifyToken(token: string) {
+// JWT 토큰 검증 함수 - 안전하게 처리하도록 수정
+export function verifyToken(token: string | null) {
+  if (!token) {
+    console.log("토큰이 제공되지 않았습니다.");
+    return null;
+  }
+  
   try {
-    console.log("JWT 토큰 검증 시도");
+    console.log("JWT 토큰 검증 시도", token.substring(0, 10) + "...");
     
     // 개발 환경에서 dev-jwt 형식 토큰 처리
     if (isDevelopment && token.startsWith('dev-jwt-')) {
@@ -93,14 +104,15 @@ export function verifyToken(token: string) {
         const userId = parseInt(parts[parts.length - 1]);
         if (!isNaN(userId)) {
           console.log("개발 환경 토큰 검증 성공, userId:", userId);
-          return { userId };
+          return { userId, name: '개발 테스트 사용자' };
         }
       }
+      console.log("개발 환경 토큰 형식 오류");
       return null;
     }
-    
+
     // 표준 JWT 토큰 검증
-    const decoded = verify(token, JWT_SECRET) as { userId: number };
+    const decoded = verify(token, JWT_SECRET) as { userId: number; name?: string };
     console.log("JWT 토큰 검증 성공", decoded);
     return decoded;
   } catch (error) {
@@ -174,15 +186,13 @@ export function getTokenFromCookies(request: Request): string | null {
  */
 export async function getAuthenticatedUser(request: NextRequest) {
   try {
-    // 1. JWT 토큰 인증 시도 (쿠키에서 auth-token 가져오기)
-    const token = getTokenFromCookies(request);
+    // 1. JWT 토큰 확인 (쿠키 또는 헤더에서)
+    const token = getTokenFromHeaders(request.headers) || getTokenFromCookies(request);
+    
     if (token) {
-      // 토큰 유효성 검증
       const decoded = verifyToken(token);
       if (decoded && decoded.userId) {
-        console.log('JWT 토큰으로 인증됨, userId:', decoded.userId);
-        
-        // 사용자 정보 조회
+        // JWT 토큰에서 userId를 사용하여 사용자 정보 조회
         const user = await prisma.user.findUnique({
           where: { id: decoded.userId },
           select: {
@@ -191,15 +201,15 @@ export async function getAuthenticatedUser(request: NextRequest) {
             email: true,
           }
         });
-
+        
         if (user) {
-          console.log('JWT 토큰으로 사용자 찾음:', user.email);
+          console.log('JWT 토큰으로 인증된 사용자:', user);
           return user;
         }
       }
     }
-
-    // 2. 세션 인증 시도 (NextAuth)
+    
+    // 2. JWT 인증 실패 시 NextAuth 세션 확인
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.email) {
@@ -222,7 +232,7 @@ export async function getAuthenticatedUser(request: NextRequest) {
       return null;
     }
 
-    console.log('NextAuth 세션으로 인증된 사용자:', user);
+    console.log('세션으로 인증된 사용자:', user);
     return user;
   } catch (error) {
     console.error('사용자 인증 확인 중 오류:', error);
@@ -230,32 +240,22 @@ export async function getAuthenticatedUser(request: NextRequest) {
   }
 }
 
-// 가입 전 중복 이메일 검사 로직 추가
-export async function checkDuplicateEmail(email: string): Promise<boolean> {
-  const existingUser = await prisma.user.findUnique({
-    where: { email }
-  });
-  
-  return !!existingUser;
-}
-
-// 이후 가입 절차 진행
-export async function signup(email: string, password: string, name: string): Promise<void> {
-  // 이메일 중복 검사
-  const isDuplicateEmail = await checkDuplicateEmail(email);
-  if (isDuplicateEmail) {
-    throw new Error('이미 가입된 이메일입니다.');
+// 임시 개발용 토큰 생성 함수
+export function generateDevToken(userId: number, name: string = '개발 테스트 사용자'): string {
+  if (!isDevelopment) {
+    console.warn('개발 환경이 아닌 곳에서 개발용 토큰을 생성하려고 합니다. 보안상 위험할 수 있습니다.');
   }
-
-  // 비밀번호 해싱
-  const hashedPassword = await hashPassword(password);
-
-  // 사용자 정보 저장
-  await prisma.user.create({
-    data: {
-      email,
-      password: hashedPassword,
-      name,
-    }
-  });
+  
+  // JWT 토큰 생성
+  try {
+    const token = sign(
+      { userId, name, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 604800 },
+      JWT_SECRET
+    );
+    return token;
+  } catch (error) {
+    console.error('개발용 토큰 생성 실패:', error);
+    // 대체 토큰 방식 (보안에 취약하니 개발용으로만 사용)
+    return `dev-jwt-${userId}-${Date.now()}`;
+  }
 } 
