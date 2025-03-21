@@ -54,7 +54,9 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    console.log(`거래 상태 업데이트 API 호출됨 - ID: ${params.id}`);
+    // params가 Promise가 될 수 있으므로 먼저 ID를 추출
+    const id = params?.id;
+    console.log(`거래 상태 업데이트 API 호출됨 - ID: ${id}`);
     
     // 현재 인증된 사용자 정보 가져오기
     const authUser = await getAuthenticatedUser(request);
@@ -70,7 +72,7 @@ export async function PATCH(
     console.log("인증된 사용자 ID:", authUser.id);
     
     // ID가 숫자인지 확인
-    const purchaseId = parseInt(params.id);
+    const purchaseId = parseInt(id);
     if (isNaN(purchaseId)) {
       return addCorsHeaders(NextResponse.json(
         { success: false, message: "유효하지 않은 구매 ID입니다." },

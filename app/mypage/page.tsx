@@ -20,8 +20,9 @@ const Loader = ({ size = 24 }: { size?: number }) => (
 );
 
 // 타입 정의
-type TransactionStatus = {
+interface TransactionStatus {
   취켓팅진행중: number
+  판매중인상품: number
   취켓팅완료: number
   거래완료: number
   거래취소: number
@@ -62,6 +63,7 @@ export default function MyPage() {
   // 트랜잭션 상태 카운트
   const [purchaseStatus, setPurchaseStatus] = useState<TransactionStatus>({
     취켓팅진행중: 0,
+    판매중인상품: 0,
     취켓팅완료: 0,
     거래완료: 0,
     거래취소: 0,
@@ -69,6 +71,7 @@ export default function MyPage() {
 
   const [saleStatus, setSaleStatus] = useState<TransactionStatus>({
     취켓팅진행중: 0,
+    판매중인상품: 0,
     취켓팅완료: 0,
     거래완료: 0,
     거래취소: 0,
@@ -143,6 +146,7 @@ export default function MyPage() {
       // 상태 카운트 초기화
       const newSaleStatus = {
         취켓팅진행중: 0,
+        판매중인상품: 0,
         취켓팅완료: 0,
         거래완료: 0,
         거래취소: 0,
@@ -154,27 +158,34 @@ export default function MyPage() {
         const postStatus = post.status || '';
         const category = post.category || '';
         
-        if (category === 'TICKET_CANCELLATION') {
-          if (postStatus === 'ACTIVE') {
-            newSaleStatus.취켓팅진행중 += 1;
-          } else if (postStatus === 'PENDING_PAYMENT') {
-            newSaleStatus.취켓팅완료 += 1;
-          } else if (postStatus === 'COMPLETED') {
-            newSaleStatus.거래완료 += 1;
-          } else if (postStatus === 'CANCELLED') {
-            newSaleStatus.거래취소 += 1;
-          }
-        } else {
-          // 일반 판매의 경우
-          if (postStatus === 'ACTIVE') {
-            newSaleStatus.취켓팅진행중 += 1;
-          } else if (postStatus === 'PENDING_PAYMENT') {
-            newSaleStatus.취켓팅완료 += 1;
-          } else if (postStatus === 'COMPLETED') {
-            newSaleStatus.거래완료 += 1;
-          } else if (postStatus === 'CANCELLED') {
-            newSaleStatus.거래취소 += 1;
-          }
+        // 상태에 따른 텍스트 표시
+        let statusText = "판매중";
+        if (postStatus === 'PENDING' || postStatus === 'PENDING_PAYMENT') {
+          statusText = "취켓팅 진행중";
+        } else if (postStatus === 'PROCESSING') {
+          statusText = "취켓팅 완료";
+        } else if (postStatus === 'COMPLETED') {
+          statusText = "거래완료";
+        } else if (postStatus === 'CANCELLED') {
+          statusText = "거래취소";
+        }
+        
+        // 상태에 따른 카운트 로직
+        if (postStatus === 'ACTIVE') {
+          // 글이 활성 상태(판매중)이면 '판매중인상품'으로 카운트
+          newSaleStatus.판매중인상품 += 1;
+        } else if (postStatus === 'PENDING' || postStatus === 'PENDING_PAYMENT') {
+          // 누군가 구매 신청을 했거나 결제 대기 중이면 '취켓팅진행중'으로 카운트
+          newSaleStatus.취켓팅진행중 += 1;
+        } else if (postStatus === 'PROCESSING') {
+          // 처리 중인 경우 '취켓팅완료'로 카운트
+          newSaleStatus.취켓팅완료 += 1;
+        } else if (postStatus === 'COMPLETED') {
+          // 거래가 완료된 경우
+          newSaleStatus.거래완료 += 1;
+        } else if (postStatus === 'CANCELLED') {
+          // 거래가 취소된 경우
+          newSaleStatus.거래취소 += 1;
         }
         
         return {
@@ -182,7 +193,7 @@ export default function MyPage() {
           title: post.title || post.eventName || "제목 없음",
           date: post.eventDate || new Date(post.createdAt).toLocaleDateString(),
           price: `${post.ticketPrice?.toLocaleString() || '가격 정보 없음'}원`,
-          status: post.category === 'TICKET_CANCELLATION' ? "취켓팅 판매중" : "판매중"
+          status: statusText
         };
       });
       
@@ -235,6 +246,7 @@ export default function MyPage() {
       // 상태 카운트 초기화
       const newPurchaseStatus = {
         취켓팅진행중: 0,
+        판매중인상품: 0,
         취켓팅완료: 0,
         거래완료: 0,
         거래취소: 0,
@@ -588,7 +600,13 @@ export default function MyPage() {
             <h2 className="text-lg font-semibold mb-4">
               최근 판매 현황 <span className="text-sm font-normal text-gray-500">(최근 1개월 기준)</span>
             </h2>
-            <div className="grid grid-cols-4 gap-4 text-center">
+            <div className="grid grid-cols-5 gap-4 text-center relative">
+              <div className="absolute left-[calc(20%-1px)] top-1 bottom-1 w-[2px] bg-gray-400"></div>
+              
+              <div className="flex flex-col items-center">
+                <span className="text-sm text-gray-600 mb-2">판매중인 상품</span>
+                <span className="text-2xl font-bold">{saleStatus.판매중인상품}</span>
+              </div>
               <div className="flex flex-col items-center">
                 <span className="text-sm text-gray-600 mb-2">취켓팅 진행중</span>
                 <span className="text-2xl font-bold">{saleStatus.취켓팅진행중}</span>

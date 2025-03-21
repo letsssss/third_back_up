@@ -53,8 +53,8 @@ interface TransactionData {
 }
 
 export default function TransactionDetail() {
-  const params = useParams()
   const router = useRouter()
+  const params = useParams()
   const { toast } = useToast()
   const [transaction, setTransaction] = useState<TransactionData | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(false)
@@ -136,19 +136,41 @@ export default function TransactionDetail() {
       try {
         setIsLoading(true);
         
-        // params가 null인지 확인
-        if (!params || !params.id) {
-          throw new Error('거래 ID를 찾을 수 없습니다');
+        // 거래 ID 가져오기 (useParams 사용)
+        const id = params?.id as string; 
+        
+        // ID가 없는 경우 오류 처리
+        if (!id) {
+          toast({
+            title: '거래 ID가 없음',
+            description: '유효한 거래 ID를 찾을 수 없습니다.',
+            variant: 'destructive',
+          });
+          setIsLoading(false);
+          return;
         }
         
+        console.log('거래 정보 가져오기 요청 ID:', id);
+        
         // 거래 정보 가져오기
-        const response = await fetch(`/api/purchase/${params.id}`);
+        const response = await fetch(`/api/purchase/${id}`);
         
         if (!response.ok) {
-          throw new Error('거래 정보를 가져오는데 실패했습니다');
+          const errorData = await response.json().catch(() => ({}));
+          console.error('API 응답 오류:', response.status, errorData);
+          throw new Error(errorData.message || '거래 정보를 가져오는데 실패했습니다');
         }
         
         const purchaseData = await response.json();
+        
+        // 응답이 성공적이지 않은 경우
+        if (!purchaseData.success) {
+          throw new Error(purchaseData.message || '거래 정보를 가져오는데 실패했습니다');
+        }
+        
+        if (!purchaseData.purchase) {
+          throw new Error('구매 데이터가 없습니다');
+        }
         
         // localStorage에서 사용자 ID 가져오기
         // 세션스토리지 또는 로컬스토리지에서 사용자 정보 가져오기
