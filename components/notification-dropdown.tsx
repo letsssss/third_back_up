@@ -121,10 +121,15 @@ export function NotificationDropdown() {
       if (!response.ok) {
         if (response.status === 500) {
           console.warn('서버 내부 오류로 알림을 가져오지 못했습니다.');
+          setNotifications([]);
+          return;  // 500 오류 시 함수 종료
         } else {
           console.warn(`알림을 가져오는데 실패했습니다. 상태 코드: ${response.status}`);
+          // 에러 대신 토스트 메시지 표시
+          toast.error(`알림을 불러올 수 없습니다 (${response.status})`);
+          setNotifications([]);
+          return;  // 다른 오류에서도 함수 종료
         }
-        throw new Error(`API 호출 실패 (${response.status})`);
       }
 
       const contentType = response.headers.get('content-type');

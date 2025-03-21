@@ -540,7 +540,7 @@ export default function TicketCancellationDetail() {
                         onClick={() => toggleSeatSelection(seat.id)}
                       >
                         <p className="font-medium">{seat.label}</p>
-                        <p className="text-gray-600">{seat.price.toLocaleString()}원</p>
+                        <p className="text-gray-600 mt-1">{seat.price.toLocaleString()}원</p>
                       </button>
                     ))}
                   </div>

@@ -86,9 +86,15 @@ export default function SellPage() {
   }
 
   const updateSectionPrice = (index: number, price: string) => {
-    const newSections = [...sections]
-    newSections[index].price = price
-    setSections(newSections)
+    // 모든 숫자가 아닌 문자 제거
+    const numericValue = price.replace(/[^\d]/g, '');
+    
+    // 천단위 구분 적용
+    const formattedValue = numericValue === '' ? '' : Number(numericValue).toLocaleString();
+    
+    const newSections = [...sections];
+    newSections[index].price = formattedValue;
+    setSections(newSections);
   }
 
   // 날짜 관련 함수 추가
@@ -408,7 +414,7 @@ export default function SellPage() {
                       </div>
                       <div className="flex items-center gap-2 mb-2">
                         <Input
-                          type="number"
+                          type="text"
                           placeholder="가격"
                           value={section.price}
                           onChange={(e) => updateSectionPrice(index, e.target.value)}

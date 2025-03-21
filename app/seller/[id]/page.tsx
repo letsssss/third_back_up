@@ -82,24 +82,54 @@ const activeListingsData = [
   },
 ]
 
+// 올바른 Params 타입을 위한 인덱스 시그니처 추가
+interface SellerParams {
+  id: string;
+  [key: string]: string;
+}
+
 export default function SellerProfile() {
+  // useParams에 타입 제약 없이 사용하고 안전하게 접근
   const params = useParams()
   const [activeTab, setActiveTab] = useState("reviews")
   const [seller, setSeller] = useState(sellerData)
   const [reviews, setReviews] = useState(reviewsData)
   const [activeListings, setActiveListings] = useState(activeListingsData)
 
-  // 실제 구현에서는 여기서 판매자 ID를 기반으로 데이터를 가져옵니다
+  // DB에서 판매자 데이터를 가져오는 함수
   useEffect(() => {
-    // API 호출 예시:
-    // const fetchSellerData = async () => {
-    //   const response = await fetch(`/api/sellers/${params.id}`);
-    //   const data = await response.json();
-    //   setSeller(data);
-    // };
-    // fetchSellerData();
-    console.log("판매자 ID:", params.id)
-  }, [params.id])
+    const sellerId = params?.id;
+    if (!sellerId) {
+      console.error("유효하지 않은 판매자 ID");
+      return;
+    }
+
+    const fetchSellerData = async () => {
+      try {
+        const response = await fetch(`/api/users/${sellerId}`);
+        const data = await response.json();
+        
+        if (data.success && data.user) {
+          console.log("판매자 데이터 로드됨:", data.user);
+          
+          // DB에서 가져온 데이터와 기존 초기값을 병합
+          setSeller({
+            ...sellerData,
+            id: data.user.id.toString(),
+            username: data.user.name || "판매자", // DB에서 이름 가져오기
+            profileImage: data.user.profileImage || sellerData.profileImage,
+            // 다른 추가 정보들도 있다면 여기서 업데이트
+          });
+        } else {
+          console.error("판매자 정보를 불러오는데 실패했습니다:", data.message);
+        }
+      } catch (error) {
+        console.error("판매자 API 호출 오류:", error);
+      }
+    };
+    
+    fetchSellerData();
+  }, [params])
 
   const handleHelpfulClick = (reviewId: number) => {
     setReviews(reviews.map((review) => (review.id === reviewId ? { ...review, helpful: review.helpful + 1 } : review)))

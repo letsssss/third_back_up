@@ -1,0 +1,5 @@
+[33mcommit 329660961b9ccd85f35d7f11a2aeeb0ddeccb65a[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: letsssss <wlstjd1590@naver.com>
+Date:   Thu Mar 20 22:23:56 2025 +0900
+
+    채팅 시스템 리팩토링: useChat 훅과 ChatInterface 컴포넌트 추가, 소켓 연결 기능 개선

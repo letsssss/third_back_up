@@ -112,7 +112,7 @@ export function ChatInterface({
         </div>
 
         {/* 채팅 메시지 영역 */}
-        <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+        <div className="flex-1 overflow-y-auto p-4">
           {isLoading ? (
             <div className="flex justify-center items-center h-full">
               <div className="text-gray-500">메시지를 불러오는 중...</div>
@@ -175,7 +175,7 @@ export function ChatInterface({
         </div>
 
         {/* 메시지 입력 영역 */}
-        <div className="p-4 border-t bg-white">
+        <div className="border-t p-3">
           <div className="flex items-center gap-2">
             <input
               type="text"

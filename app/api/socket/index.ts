@@ -575,14 +575,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponseS
     socket.on('onSend', async (data) => {
       console.log('Socket onSend 이벤트 수신:', data);
       try {
-        const { roomId, chat, user } = data;
+        const { roomId, chat, user, clientId } = data;
         
         if (!roomId || !chat) {
           console.error('메시지 전송 오류: 필수 데이터 누락 (roomId 또는 메시지 내용)');
           socket.emit('socketError', { 
             message: '메시지 데이터가 올바르지 않습니다.',
-            code: 'INVALID_MESSAGE_DATA'
+            code: 'INVALID_MESSAGE_DATA',
+            details: '채팅방 ID 또는 메시지 내용이 누락되었습니다.'
           });
+          
+          // 메시지 전송 실패 응답
+          if (clientId) {
+            socket.emit('messageSent', {
+              messageId: clientId,
+              status: 'failed',
+              roomId: roomId || '',
+              error: '메시지 데이터가 올바르지 않습니다.'
+            });
+          }
           return;
         }
         
@@ -607,6 +618,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponseS
               details: process.env.NODE_ENV === 'development' ? '메모리에 채팅방을 저장하는 중 오류가 발생했습니다.' : undefined,
               code: 'ROOM_CREATION_ERROR'
             });
+            
+            // 메시지 전송 실패 응답
+            if (clientId) {
+              socket.emit('messageSent', {
+                messageId: clientId,
+                status: 'failed',
+                roomId: roomId,
+                error: '채팅방을 생성할 수 없습니다.'
+              });
+            }
             return;
           }
         }
@@ -721,84 +742,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponseS
         
         // 메시지를 채팅방에 브로드캐스트
         io.to(roomId).emit('onReceive', {
+          messageId: messageId,
+          chat: newMessage.text,
+          timestamp: newMessage.timestamp,
           user: {
             id: messageUser.id,
             name: messageUser.name,
-            profileImage: messageUser.profileImage || '/placeholder.svg'
+            profileImage: messageUser.profileImage
           },
-          chat: newMessage.text,
-          messageId: newMessage.id,
-          timestamp: newMessage.timestamp
+          clientId: clientId // 클라이언트 ID 전달 (동일성 확인용)
         });
         
-        // 메시지 성공적으로 전송됨을 알림
-        socket.emit('messageSent', {
-          messageId: newMessage.id,
-          status: 'success',
-          roomId: roomId
-        });
-        
-        console.log(`메시지가 ${roomId} 채팅방에 전송됨:`, newMessage);
-        
-        // 메시지 알림 생성 (DB에 저장)
-        if (dbRecipientId && dbRecipientId !== messageUser.id) {
-          try {
-            // 발신자 정보 확인
-            let sender = await prisma.user.findUnique({
-              where: { id: messageUser.id },
-              select: { name: true }
-            });
-            
-            const senderName = sender?.name || messageUser.name || '알 수 없는 사용자';
-            
-            // 알림 생성
-            const notification = await prisma.notification.create({
-              data: {
-                userId: dbRecipientId,
-                message: `${senderName}님으로부터 새 메시지가 도착했습니다: "${chat.substring(0, 20)}${chat.length > 20 ? '...' : ''}"`,
-                type: 'MESSAGE',
-                postId: null
-              }
-            });
-            
-            console.log(`소켓 알림 생성 성공 (수신자 ID: ${dbRecipientId}):`, notification);
-            
-            // 온라인 상태면 실시간 알림도 보냄
-            // TODO: 추후 클라이언트에서 실시간 알림 수신 이벤트 구현 필요
-          } catch (error) {
-            console.error('메시지 알림 생성 중 오류:', error);
-            // 알림 생성 실패해도 메시지 전송은 성공했으므로 계속 진행
-          }
-        } else {
-          console.log(`알림 생성 건너뜀 - 수신자 ID: ${dbRecipientId}, 발신자 ID: ${messageUser.id}`);
-        }
-        
-        // 항상 데이터베이스에 메시지 저장
-        try {
-          // 메시지 DB 저장
-          const dbMessage = await prisma.message.create({
-            data: {
-              senderId: messageUser.id,
-              receiverId: dbRecipientId || 1, // 수신자가 없으면 기본값 1 사용
-              content: chat,
-              purchaseId: purchaseId,
-              roomId: roomId,
-              isRead: false,
-            }
+        // 성공 응답 전송
+        if (clientId) {
+          socket.emit('messageSent', {
+            messageId: messageId,
+            status: 'sent',
+            roomId: roomId,
+            clientId: clientId
           });
-          
-          console.log(`메시지가 데이터베이스에 저장됨 (ID: ${dbMessage.id})`);
-        } catch (dbError) {
-          console.error('메시지 DB 저장 중 오류:', dbError);
-          // DB 저장 실패해도 메시지는 이미 전송되었으므로 사용자에게 오류 알림 없이 계속 진행
         }
+
+        console.log(`메시지 전송됨: ${roomId} - ${messageUser.name}: ${chat}`);
       } catch (error) {
-        console.error('메시지 전송 중 오류:', error);
+        console.error('메시지 전송 오류:', error);
+        
+        // 오류 상세 정보 생성
+        const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        
+        // 소켓 오류 이벤트 발생
         socket.emit('socketError', { 
-          message: error instanceof Error ? error.message : '메시지 전송 중 오류가 발생했습니다.',
-          details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.stack : '상세 정보 없음') : undefined,
+          message: '메시지 전송 중 오류가 발생했습니다.',
+          details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+          stack: process.env.NODE_ENV === 'development' ? errorStack : undefined,
           code: 'MESSAGE_SEND_ERROR'
         });
+        
+        // 메시지 전송 실패 이벤트 발생 (클라이언트 ID가 있는 경우)
+        if (data.clientId) {
+          socket.emit('messageSent', {
+            messageId: data.clientId,
+            status: 'failed',
+            roomId: data.roomId || '',
+            error: errorMessage
+          });
+        }
       }
     });
 

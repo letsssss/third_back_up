@@ -455,7 +455,7 @@ export default function TicketCancellationPage() {
                     </div>
                     <div className="flex justify-between items-center">
                       <div>
-                        <span className="font-medium text-black text-lg">{ticket.ticketPrice?.toLocaleString() || 0}원</span>
+                        <span className="font-medium text-black text-lg">{Number(ticket.ticketPrice || 0).toLocaleString()}원</span>
                       </div>
                       <Button
                         className="bg-[#0061FF] hover:bg-[#0052D6]"

@@ -93,9 +93,138 @@ export default function SellerTransactionDetail() {
   const [isLoading, setIsLoading] = useState(true)
   
   // 현재 로그인한 사용자 ID (판매자)
-  const [sellerId, setSellerId] = useState<string>("1") // 판매자 ID를 "1"로 설정 (구매자는 "2")
+  const [sellerId, setSellerId] = useState<string>("1") // 초기값으로 설정
   
-  // useChat 훅 사용
+  // 페이지 로드 시 거래 정보 가져오기
+  useEffect(() => {
+    const fetchTransactionData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // params가 null인지 확인
+        if (!params || !params.id) {
+          throw new Error('거래 ID를 찾을 수 없습니다');
+        }
+        
+        // 거래 정보 가져오기
+        const response = await fetch(`/api/purchase/${params.id}`);
+        
+        if (!response.ok) {
+          throw new Error('거래 정보를 가져오는데 실패했습니다');
+        }
+        
+        const data = await response.json();
+        console.log('가져온 거래 정보:', data);
+        
+        if (!data.success || !data.purchase) {
+          throw new Error('유효한 거래 정보가 없습니다');
+        }
+        
+        // 사용자 정보 가져오기 (로컬스토리지 또는 세션에서)
+        let currentUserId = ""; // 기본값은 빈 문자열
+        
+        // 클라이언트 사이드에서만 실행
+        if (typeof window !== 'undefined') {
+          try {
+            // 우선 user 객체에서 시도
+            const userStr = localStorage.getItem('user');
+            if (userStr) {
+              const user = JSON.parse(userStr);
+              if (user && user.id) {
+                currentUserId = user.id.toString();
+                console.log('로컬스토리지에서 user 객체로부터 ID 찾음:', currentUserId);
+              }
+            }
+            
+            // user 객체에서 ID를 찾지 못한 경우 userId 직접 시도
+            if (!currentUserId) {
+              const directUserId = localStorage.getItem('userId');
+              if (directUserId) {
+                currentUserId = directUserId;
+                console.log('로컬스토리지에서 userId로부터 ID 찾음:', currentUserId);
+              }
+            }
+            
+            // 테스트용 ID 할당 (개발 환경에서만)
+            if (!currentUserId) {
+              currentUserId = sellerId || "1"; // 임시로 1 설정
+              console.log('테스트를 위한 임시 ID 사용:', currentUserId);
+            }
+          } catch (error) {
+            console.error('로컬스토리지에서 사용자 ID 가져오기 실패:', error);
+            currentUserId = sellerId || "1"; // 오류 시 기본값
+          }
+        }
+        
+        console.log('최종 사용되는 판매자 ID:', currentUserId);
+        setSellerId(currentUserId);
+        
+        // 거래 정보를 TransactionData 형식으로 변환
+        const purchase = data.purchase;
+        const formattedTransaction: TransactionData = {
+          id: purchase.id.toString(),
+          type: 'sale', // 판매자 화면이므로 sale로 설정
+          status: purchase.status,
+          currentStep: purchase.status === 'PENDING' ? 'payment' : 
+                       purchase.status === 'PROCESSING' ? 'ticketing_started' : 
+                       purchase.status === 'COMPLETED' ? 'confirmed' : 'payment',
+          stepDates: {
+            payment: purchase.createdAt,
+            ticketing_started: purchase.status !== 'PENDING' ? purchase.updatedAt : null,
+            ticketing_completed: purchase.status === 'COMPLETED' ? purchase.updatedAt : null,
+            confirmed: purchase.status === 'COMPLETED' ? purchase.updatedAt : null,
+          },
+          ticket: {
+            title: purchase.post?.title || '티켓 정보 없음',
+            date: purchase.post?.eventDate || '날짜 정보 없음',
+            time: '정보 없음', // 이 정보는 API에서 제공되지 않음
+            venue: purchase.post?.eventVenue || '장소 정보 없음',
+            seat: purchase.selectedSeats || '좌석 정보 없음',
+            image: '/placeholder.svg',
+          },
+          price: purchase.totalPrice ? Number(purchase.totalPrice) : 0,
+          paymentMethod: purchase.paymentMethod || '결제 방법 정보 없음',
+          paymentStatus: purchase.status === 'PENDING' ? '결제 완료' : 
+                         purchase.status === 'PROCESSING' ? '처리 중' : 
+                         purchase.status === 'COMPLETED' ? '완료' : '대기 중',
+          ticketingStatus: purchase.status === 'PENDING' ? '대기 중' : 
+                           purchase.status === 'PROCESSING' ? '취켓팅 진행중' : 
+                           purchase.status === 'COMPLETED' ? '취켓팅 완료' : '대기 중',
+          ticketingInfo: '취소표 발생 시 빠르게 예매를 진행해 드립니다.',
+          // 구매자 정보 설정
+          buyer: {
+            id: purchase.buyer?.id.toString(),
+            name: purchase.buyer?.name || '구매자 정보 없음',
+            profileImage: purchase.buyer?.profileImage || '/placeholder.svg?height=50&width=50',
+          },
+          // 판매자 정보 설정
+          seller: {
+            id: purchase.seller?.id.toString(),
+            name: purchase.seller?.name || '판매자 정보 없음',
+            profileImage: purchase.seller?.profileImage || '/placeholder.svg?height=50&width=50',
+          }
+        };
+        
+        console.log('변환된 거래 정보:', formattedTransaction);
+        setTransaction(formattedTransaction);
+      } catch (error) {
+        console.error('거래 정보 로딩 오류:', error);
+        toast({
+          title: '거래 정보 로딩 실패',
+          description: '거래 정보를 가져오는데 문제가 발생했습니다. 새로고침을 시도해주세요.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    if (params?.id) {
+      fetchTransactionData();
+    }
+  }, [params?.id, toast]);
+
+  // useChat 훅 사용 - transaction이 업데이트될 때마다 재호출되도록 의존성 배열에 추가
   const { 
     messages, 
     isLoading: isMessagesLoading, 
@@ -104,54 +233,65 @@ export default function SellerTransactionDetail() {
     fetchMessages 
   } = useChat({
     transactionId: params?.id as string,
-    userId: sellerId,
+    userId: sellerId || "", // 빈 문자열 대신 기본값 제공
     userRole: 'seller',
-    otherUserId: transaction.buyer?.id
+    otherUserId: transaction?.buyer?.id
   });
 
-  // 페이지 로드 시 거래 정보 가져오기
+  // 새로운 useEffect 추가하여 로깅
   useEffect(() => {
-    // 실제 구현에서는 API 호출하여 거래 정보 가져오기
-    // const fetchTransactionData = async () => {
-    //   try {
-    //     const response = await fetch(`/api/seller/transactions/${params.id}`);
-    //     if (!response.ok) throw new Error('거래 정보를 가져오는데 실패했습니다');
-    //     const data = await response.json();
-    //     setTransaction(data);
-    //   } catch (error) {
-    //     console.error('거래 정보 로딩 오류:', error);
-    //     toast({
-    //       title: '거래 정보 로딩 실패',
-    //       description: '거래 정보를 가져오는데 문제가 발생했습니다. 새로고침을 시도해주세요.',
-    //       variant: 'destructive',
-    //     });
-    //   } finally {
-    //     setIsLoading(false);
-    //   }
-    // };
+    console.log('채팅 상태:', {
+      transactionId: params?.id,
+      sellerId,
+      isSocketConnected,
+      hasMessages: messages.length > 0,
+      otherUserId: transaction?.buyer?.id
+    });
+  }, [params?.id, sellerId, isSocketConnected, messages.length, transaction?.buyer?.id]);
+
+  // 메시지 전송 핸들러에 추가 로깅 추가
+  const handleSendMessage = async (content: string): Promise<boolean> => {
+    if (!content || !content.trim()) return false;
     
-    // 임시로 데이터 로딩 시뮬레이션
-    setTimeout(() => {
-      // localStorage에서 저장된 역할 확인 (구매자/판매자)
-      const role = localStorage.getItem('userRole') || 'seller';
-      if (role === 'buyer') {
-        setTransaction(prev => ({
-          ...prev,
-          type: 'purchase',
-        }));
+    try {
+      console.log('메시지 전송 시도:', {
+        content,
+        sellerId,
+        buyerId: transaction?.buyer?.id,
+        transactionId: params?.id
+      });
+      
+      const result = await sendMessage(content);
+      console.log('메시지 전송 결과:', result);
+      
+      if (!result) {
+        toast({
+          title: '메시지 전송 실패',
+          description: '메시지를 전송하지 못했습니다. 다시 시도해주세요.',
+          variant: 'destructive',
+        });
+        return false;
       }
       
-      setIsLoading(false);
-    }, 1000);
-    
-  }, [params?.id, toast]);
+      return true;
+    } catch (error) {
+      console.error('메시지 전송 오류:', error);
+      toast({
+        title: '메시지 전송 오류',
+        description: '메시지 전송 중 오류가 발생했습니다.',
+        variant: 'destructive',
+      });
+      return false;
+    }
+  };
 
   // 채팅창이 열릴 때 메시지 가져오기
   useEffect(() => {
-    if (isChatOpen) {
+    if (isChatOpen && transaction.buyer?.id) {
+      console.log('메시지 가져오기 시도: 구매자 ID:', transaction.buyer.id);
       fetchMessages();
     }
-  }, [isChatOpen, fetchMessages]);
+  }, [isChatOpen, transaction.buyer?.id, fetchMessages]);
 
   // 거래 단계 정의 - 4단계로 수정
   const transactionSteps = [
@@ -467,7 +607,7 @@ export default function SellerTransactionDetail() {
         onClose={closeChat}
         messages={messages}
         isLoading={isMessagesLoading}
-        onSendMessage={sendMessage}
+        onSendMessage={handleSendMessage}
         otherUserName={transaction.buyer?.name || "구매자"}
         otherUserProfileImage={transaction.buyer?.profileImage}
         otherUserRole="구매자"
