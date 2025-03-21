@@ -59,9 +59,11 @@ export default function TransactionDetail() {
   const [transaction, setTransaction] = useState<TransactionData | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [currentUserRole, setCurrentUserRole] = useState<'buyer' | 'seller'>('buyer')
   
-  // 현재 로그인한 사용자 ID (구매자)
-  const [buyerId, setBuyerId] = useState<string>("")
+  // 현재 로그인한 사용자 ID
+  const [currentUserId, setCurrentUserId] = useState<string>("")
   
   // useChat 훅 사용
   const { 
@@ -73,21 +75,23 @@ export default function TransactionDetail() {
     error: chatError
   } = useChat({
     transactionId: params?.id as string,
-    userId: buyerId,
-    userRole: 'buyer',
-    otherUserId: transaction?.seller?.id
+    userId: currentUserId,
+    userRole: currentUserRole,
+    otherUserId: currentUserRole === 'buyer' 
+      ? transaction?.seller?.id
+      : transaction?.buyer?.id
   });
 
   // 채팅 디버깅을 위한 로그 추가
   useEffect(() => {
     console.log('구매자 채팅 상태:', {
       transactionId: params?.id,
-      buyerId,
+      buyerId: currentUserId,
       socketConnected,
       hasMessages: messages.length > 0,
-      otherUserId: transaction?.seller?.id
+      otherUserId: currentUserRole === 'buyer' ? transaction?.seller?.id : transaction?.buyer?.id
     });
-  }, [params?.id, buyerId, socketConnected, messages.length, transaction?.seller?.id]);
+  }, [params?.id, currentUserId, socketConnected, messages.length, currentUserRole, transaction?.seller?.id, transaction?.buyer?.id]);
 
   // 메시지 전송 핸들러에 추가 로깅 추가
   const handleSendMessage = async (content: string): Promise<boolean> => {
@@ -96,8 +100,8 @@ export default function TransactionDetail() {
     try {
       console.log('구매자 메시지 전송 시도:', {
         content,
-        buyerId,
-        sellerId: transaction?.seller?.id,
+        buyerId: currentUserId,
+        sellerId: currentUserRole === 'buyer' ? transaction?.seller?.id : transaction?.buyer?.id,
         transactionId: params?.id
       });
       
@@ -183,12 +187,19 @@ export default function TransactionDetail() {
           }
         }
         
-        console.log('최종 사용되는 구매자 ID:', userId);
-        setBuyerId(userId);
+        console.log('최종 사용되는 현재 사용자 ID:', userId);
+        setCurrentUserId(userId);
+        
+        // 구매자인지 판매자인지 결정
+        const userRole = userId === purchaseData.purchase?.sellerId?.toString() 
+          ? 'seller' 
+          : 'buyer';
+        setCurrentUserRole(userRole);
+        console.log('사용자 역할:', userRole);
         
         console.log('API에서 가져온 구매 데이터:', purchaseData);
         
-        // 구매 데이터를 TransactionData a형식으로 변환
+        // 구매 데이터를 TransactionData 형식으로 변환
         const formattedTransaction: TransactionData = {
           id: purchaseData.purchase?.id?.toString() || "",
           type: "purchase",
@@ -196,9 +207,15 @@ export default function TransactionDetail() {
           currentStep: purchaseData.purchase?.status || "",
           stepDates: {
             payment: purchaseData.purchase?.createdAt || "",
-            ticketing_started: purchaseData.purchase?.updatedAt || null,
-            ticketing_completed: purchaseData.purchase?.status === 'COMPLETED' ? purchaseData.purchase?.updatedAt : null,
-            confirmed: purchaseData.purchase?.status === 'CONFIRMED' ? purchaseData.purchase?.updatedAt : null,
+            ticketing_started: purchaseData.purchase?.status === 'PROCESSING' || purchaseData.purchase?.status === 'COMPLETED' || purchaseData.purchase?.status === 'CONFIRMED' 
+              ? purchaseData.purchase?.updatedAt || ""
+              : null,
+            ticketing_completed: purchaseData.purchase?.status === 'COMPLETED' || purchaseData.purchase?.status === 'CONFIRMED' 
+              ? purchaseData.purchase?.updatedAt || ""
+              : null,
+            confirmed: purchaseData.purchase?.status === 'CONFIRMED' 
+              ? purchaseData.purchase?.updatedAt || ""
+              : null,
           },
           ticket: {
             title: purchaseData.purchase?.post?.title || '티켓 정보 없음',
@@ -217,6 +234,11 @@ export default function TransactionDetail() {
             id: purchaseData.purchase?.seller?.id?.toString() || "",
             name: purchaseData.purchase?.seller?.name || "판매자",
             profileImage: purchaseData.purchase?.seller?.profileImage || "/placeholder.svg?height=50&width=50",
+          },
+          buyer: {
+            id: purchaseData.purchase?.buyer?.id?.toString() || "",
+            name: purchaseData.purchase?.buyer?.name || "구매자",
+            profileImage: purchaseData.purchase?.buyer?.profileImage || "/placeholder.svg?height=50&width=50",
           },
         };
         
@@ -240,10 +262,10 @@ export default function TransactionDetail() {
   // 상태 텍스트 변환 함수
   function getStatusText(status: string): string {
     switch (status) {
-      case 'payment_completed': return '결제 완료';
-      case 'ticketing_started': return '취켓팅 시작';
-      case 'ticketing_completed': return '취켓팅 완료';
-      case 'confirmed': return '거래 확정';
+      case 'PENDING': return '결제 완료';
+      case 'PROCESSING': return '취켓팅 시작';
+      case 'COMPLETED': return '취켓팅 완료';
+      case 'CONFIRMED': return '거래 확정';
       default: return '진행중';
     }
   }
@@ -251,35 +273,62 @@ export default function TransactionDetail() {
   // 취켓팅 상태 텍스트 변환 함수
   function getTicketingStatusText(status: string): string {
     switch (status) {
-      case 'payment_completed': return '취켓팅 대기중';
-      case 'ticketing_started': return '취켓팅 진행중';
-      case 'ticketing_completed': return '취켓팅 완료';
-      case 'confirmed': return '거래 확정';
+      case 'PENDING': return '취켓팅 대기중';
+      case 'PROCESSING': return '취켓팅 진행중';
+      case 'COMPLETED': return '취켓팅 완료';
+      case 'CONFIRMED': return '거래 확정';
       default: return '진행중';
     }
   }
 
-  // 채팅창이 열릴 때 메시지 가져오기
-  useEffect(() => {
-    if (isChatOpen && transaction?.seller?.id) {
-      console.log('메시지 가져오기 시도: 판매자 ID:', transaction.seller.id);
-      try {
-        fetchMessages();
-      } catch (error) {
-        console.error('메시지 가져오기 오류:', error);
-        toast({
-          title: '메시지 로드 실패',
-          description: '메시지를 불러오는데 실패했습니다.',
-          variant: 'destructive',
-        });
+  // 상태 변경 함수 추가
+  const handleStatusChange = async (newStatus: string) => {
+    if (!transaction || !params?.id || isSubmitting) return;
+    
+    try {
+      setIsSubmitting(true);
+      
+      // API 호출
+      const response = await fetch(`/api/purchase/${params.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '상태 변경에 실패했습니다');
       }
+      
+      const data = await response.json();
+      console.log('상태 변경 성공:', data);
+      
+      // 성공 메시지 표시
+      toast({
+        title: '상태 변경 성공',
+        description: data.message || '거래 상태가 업데이트되었습니다.',
+      });
+      
+      // 페이지 새로고침
+      window.location.reload();
+    } catch (error) {
+      console.error('상태 변경 오류:', error);
+      toast({
+        title: '상태 변경 실패',
+        description: error instanceof Error ? error.message : '상태 변경 중 오류가 발생했습니다.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [isChatOpen, transaction?.seller?.id, fetchMessages, toast]);
+  };
 
   // 거래 단계 정의
   const transactionSteps = [
     {
-      id: "payment_completed",
+      id: "PENDING",
       label: "결제 완료",
       icon: <CreditCard className="w-5 h-5" />,
       date: transaction?.stepDates?.payment
@@ -292,7 +341,7 @@ export default function TransactionDetail() {
         : ""
     },
     {
-      id: "ticketing_started",
+      id: "PROCESSING",
       label: "취켓팅 시작",
       icon: <Play className="w-5 h-5" />,
       date: transaction?.stepDates?.ticketing_started
@@ -305,7 +354,7 @@ export default function TransactionDetail() {
         : ""
     },
     {
-      id: "ticketing_completed",
+      id: "COMPLETED",
       label: "취켓팅 완료",
       icon: <CheckCircle className="w-5 h-5" />,
       date: transaction?.stepDates?.ticketing_completed
@@ -318,7 +367,7 @@ export default function TransactionDetail() {
         : ""
     },
     {
-      id: "confirmed",
+      id: "CONFIRMED",
       label: "구매 확정",
       icon: <ThumbsUp className="w-5 h-5" />,
       date: transaction?.stepDates?.confirmed
@@ -334,41 +383,12 @@ export default function TransactionDetail() {
   
   // 액션 버튼 (확인 버튼) 클릭 핸들러
   const handleAction = async () => {
-    if (transaction?.currentStep === "ticketing_completed") {
-      // 취켓팅 완료 확인 (구매 확정) 로직
-      try {
-        // API 호출 (거래 확정)
-        // const response = await fetch(`/api/transactions/${transaction.id}/confirm`, {
-        //   method: 'POST',
-        // });
-        // if (!response.ok) throw new Error('거래 확정에 실패했습니다');
-        
-        // 성공 시 상태 업데이트
-        // const data = await response.json();
-        // setTransaction(prev => ({
-        //   ...prev,
-        //   currentStep: "confirmed",
-        //   stepDates: {
-        //     ...prev.stepDates,
-        //     confirmed: new Date().toISOString(),
-        //   }
-        // }));
-        
-        toast({
-          title: "거래가 확정되었습니다",
-          description: "판매자에게 리뷰를 작성해주세요",
-        })
-      } catch (error) {
-        console.error('거래 확정 오류:', error);
-        toast({
-          title: '거래 확정 실패',
-          description: '다시 시도해주세요.',
-          variant: 'destructive',
-        })
-      }
-    } else if (transaction?.currentStep === "confirmed") {
+    if (transaction?.currentStep === "COMPLETED" && currentUserRole === 'buyer') {
+      // 구매자: 취켓팅 완료 확인 (구매 확정) 로직
+      handleStatusChange('CONFIRMED');
+    } else if (transaction?.currentStep === "CONFIRMED") {
       // 이미 확정된 경우 리뷰 작성 페이지로 이동
-      router.push(`/review/${transaction.id}?role=buyer`)
+      router.push(`/review/${transaction.id}?role=${currentUserRole}`)
     }
   }
 
@@ -392,7 +412,7 @@ export default function TransactionDetail() {
       <header className="bg-white shadow-sm">
         <div className="container mx-auto px-4 py-6">
           <Link
-            href="/dashboard"
+            href="/mypage"
             className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
           >
             <ArrowLeft className="h-5 w-5 mr-2" />
@@ -506,26 +526,22 @@ export default function TransactionDetail() {
               <h3 className="text-xl font-semibold mb-6 text-gray-800">취켓팅 정보</h3>
 
               <TicketingStatusCard
-                status={transaction?.currentStep === "ticketing_completed" ? "completed" : "in_progress"}
-                message={
-                  transaction?.currentStep === "ticketing_completed"
-                    ? "취켓팅이 완료되었습니다. 판매자가 성공적으로 티켓을 구매했습니다. 아래 버튼을 눌러 구매를 확정해주세요."
-                    : transaction?.ticketingInfo || "취켓팅 진행 중입니다."
-                }
-                updatedAt={
-                  transaction?.currentStep === "ticketing_completed"
-                    ? (transaction?.stepDates?.ticketing_completed 
-                        ? new Date(transaction.stepDates.ticketing_completed).toLocaleString() 
-                        : "날짜 정보 없음")
-                    : "진행중"
-                }
+                status={transaction?.currentStep === "COMPLETED" ? "completed" : "in_progress"}
+                message={transaction?.currentStep === "COMPLETED" 
+                  ? "취켓팅이 완료되었습니다. 판매자가 성공적으로 티켓을 구매했습니다. 아래 버튼을 눌러 구매를 확정해주세요." 
+                  : (transaction?.ticketingInfo || "취켓팅 진행 중입니다.")}
+                updatedAt={transaction?.currentStep === "COMPLETED"
+                  ? (transaction?.stepDates?.ticketing_completed 
+                    ? new Date(transaction.stepDates.ticketing_completed).toLocaleString() 
+                    : "날짜 정보 없음")
+                  : "진행중"}
               />
 
               <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="p-4 bg-gray-50 rounded-lg">
                   <span className="text-xs text-gray-500 block mb-1">취켓팅 상태</span>
                   <span className="font-medium text-blue-600">
-                    {transaction?.currentStep === "ticketing_completed" ? "취켓팅 완료" : transaction?.ticketingStatus || "진행중"}
+                    {transaction?.currentStep === "COMPLETED" ? "취켓팅 완료" : transaction?.ticketingStatus || "진행중"}
                   </span>
                 </div>
                 <div className="p-4 bg-gray-50 rounded-lg">
@@ -550,7 +566,11 @@ export default function TransactionDetail() {
             </div>
 
             <div className="mt-10 flex justify-end gap-4">
-              <Button onClick={openChat} variant="outline" className="flex items-center gap-2 border-gray-300">
+              <Button 
+                onClick={openChat} 
+                variant="outline" 
+                className="flex items-center gap-2 border-gray-300"
+              >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="16"
@@ -564,19 +584,57 @@ export default function TransactionDetail() {
                 >
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
-                판매자에게 메시지
+                {currentUserRole === 'buyer' ? '판매자에게 메시지' : '구매자에게 메시지'}
               </Button>
 
-              {transaction?.currentStep === "ticketing_completed" && (
+              {/* 구매자인 경우 구매 확정 버튼 */}
+              {currentUserRole === 'buyer' && transaction?.currentStep === "COMPLETED" && (
                 <Button
                   onClick={handleAction}
+                  disabled={isSubmitting}
                   className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md"
                 >
-                  구매 확정하기
+                  {isSubmitting ? '처리 중...' : '구매 확정하기'}
                 </Button>
               )}
 
-              {transaction?.currentStep === "confirmed" && (
+              {/* 판매자인 경우 구매 확정 버튼 추가 */}
+              {currentUserRole === 'seller' && transaction?.currentStep === "COMPLETED" && (
+                <Button
+                  onClick={() => handleStatusChange('CONFIRMED')}
+                  disabled={isSubmitting}
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md"
+                >
+                  {isSubmitting ? '처리 중...' : '구매 확정하기'}
+                </Button>
+              )}
+
+              {/* 판매자인 경우 상태 변경 버튼 */}
+              {currentUserRole === 'seller' && (
+                <>
+                  {transaction?.currentStep === "PENDING" && (
+                    <Button
+                      onClick={() => handleStatusChange('PROCESSING')}
+                      disabled={isSubmitting}
+                      className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md"
+                    >
+                      {isSubmitting ? '처리 중...' : '취켓팅 시작하기'}
+                    </Button>
+                  )}
+                  
+                  {transaction?.currentStep === "PROCESSING" && (
+                    <Button
+                      onClick={() => handleStatusChange('COMPLETED')}
+                      disabled={isSubmitting}
+                      className="bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md"
+                    >
+                      {isSubmitting ? '처리 중...' : '취켓팅 완료하기'}
+                    </Button>
+                  )}
+                </>
+              )}
+
+              {transaction?.currentStep === "CONFIRMED" && (
                 <Button
                   onClick={handleAction}
                   className="bg-teal-500 hover:bg-teal-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md"
@@ -596,9 +654,13 @@ export default function TransactionDetail() {
         messages={messages}
         isLoading={isMessagesLoading}
         onSendMessage={handleSendMessage}
-        otherUserName={transaction?.seller?.name || "판매자"}
-        otherUserProfileImage={transaction?.seller?.profileImage}
-        otherUserRole="판매자"
+        otherUserName={currentUserRole === 'buyer' 
+          ? transaction?.seller?.name || "판매자" 
+          : transaction?.buyer?.name || "구매자"}
+        otherUserProfileImage={currentUserRole === 'buyer' 
+          ? transaction?.seller?.profileImage 
+          : transaction?.buyer?.profileImage}
+        otherUserRole={currentUserRole === 'buyer' ? "판매자" : "구매자"}
       />
     </div>
   )

@@ -3,12 +3,14 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
+import { useParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { useParams, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { ArrowLeft, Calendar, MapPin, Clock, CheckCircle, AlertCircle, Star } from "lucide-react"
 import { motion } from "framer-motion"
 import confetti from "canvas-confetti"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,47 +50,12 @@ interface TicketData {
 }
 
 export default function TicketCancellationDetail() {
-  const params = useParams()
+  const params = useParams();
+  const id = params?.id as string;
+  
   const router = useRouter()
   const { user } = useAuth()
-  const [ticketData, setTicketData] = useState<TicketData>({
-    id: 32,
-    title: "2024 아이유 콘서트 취켓팅",
-    artist: "아이유 (IU)",
-    date: "2024-05-15",
-    time: "19:00",
-    venue: "서울 올림픽 체조경기장",
-    price: 165000,
-    originalPrice: 165000,
-    image: "/placeholder.svg?height=400&width=800",
-    status: "FOR_SALE",
-    successRate: 80,
-    seller: {
-      name: "판매자",
-      rating: 4.5,
-      image: "",
-    },
-    seatOptions: [
-      {
-        id: "A",
-        label: "A구역",
-        price: 165000,
-        available: true,
-      },
-      {
-        id: "B",
-        label: "B구역", 
-        price: 145000,
-        available: true,
-      },
-      {
-        id: "C",
-        label: "C구역",
-        price: 125000,
-        available: true,
-      },
-    ]
-  })
+  const [ticketData, setTicketData] = useState<TicketData | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedSeats, setSelectedSeats] = useState<string[]>([])
   const [phoneNumber, setPhoneNumber] = useState("")
@@ -99,13 +66,20 @@ export default function TicketCancellationDetail() {
   const [name, setName] = useState(user?.name || "")
   const [address, setAddress] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [isAuthor, setIsAuthor] = useState(false)
 
   // 게시글 데이터 불러오기
   useEffect(() => {
     async function fetchPostData() {
+      if (!id) {
+        setLoading(false)
+        toast.error("유효하지 않은 게시글 ID입니다.")
+        return
+      }
+
       try {
         setLoading(true);
-        const response = await fetch(`/api/posts/${params.id}`);
+        const response = await fetch(`/api/posts/${id}`);
         
         if (!response.ok) {
           throw new Error('게시글을 불러오는데 실패했습니다');
@@ -201,12 +175,18 @@ export default function TicketCancellationDetail() {
           status: 'FOR_SALE',
           successRate: 80,
           seller: {
+            id: postData.author?.id?.toString() || '',
             name: postData.author?.name || '판매자 정보 없음',
             rating: 4.5,
             image: postData.author?.image || '',
           },
           seatOptions: seatOptions
         });
+        
+        // 사용자가 게시글 작성자인지 확인
+        if (user && postData.author && user.id.toString() === postData.author.id.toString()) {
+          setIsAuthor(true);
+        }
         
         setError(null);
       } catch (error) {
@@ -218,7 +198,7 @@ export default function TicketCancellationDetail() {
     }
     
     fetchPostData();
-  }, [params.id]);
+  }, [id]);
 
   // 로그인 상태가 변경되면 이름 필드 업데이트
   useEffect(() => {
@@ -242,8 +222,13 @@ export default function TicketCancellationDetail() {
     setSelectedSeats((prev) => (prev.includes(seatId) ? prev.filter((id) => id !== seatId) : [...prev, seatId]))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    
+    if (!id) {
+      toast.error("유효하지 않은 게시글 ID입니다.")
+      return
+    }
 
     if (!user) {
       toast.error("로그인이 필요한 서비스입니다.")
@@ -266,7 +251,7 @@ export default function TicketCancellationDetail() {
     // 선택한 좌석 정보 구성
     const selectedSeatLabels = selectedSeats
       .map((seatId) => {
-        const seat = ticketData.seatOptions.find((s) => s.id === seatId)
+        const seat = ticketData?.seatOptions.find((s) => s.id === seatId)
         return seat ? seat.label : ""
       })
       .filter(Boolean)
@@ -275,6 +260,10 @@ export default function TicketCancellationDetail() {
     // 티켓 구매 요청
     const purchaseTicket = async () => {
       try {
+        if (!id) {
+          throw new Error("게시글 ID가 없습니다")
+        }
+
         // 티켓 구매 API 호출
         const response = await fetch('/api/ticket-purchase', {
           method: 'POST',
@@ -282,7 +271,7 @@ export default function TicketCancellationDetail() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            postId: parseInt(params.id as string),
+            postId: parseInt(id),
             quantity: selectedSeats.length,
             selectedSeats: selectedSeatLabels,
             phoneNumber: phoneNumber,
@@ -511,6 +500,17 @@ export default function TicketCancellationDetail() {
                   </div>
                 </div>
               )}
+              {user && isAuthor && (
+                <div className="bg-orange-50 p-4 rounded-lg mb-6">
+                  <div className="flex items-start">
+                    <AlertCircle className="h-5 w-5 text-orange-500 mr-2 mt-0.5" />
+                    <div>
+                      <p className="text-orange-700 font-medium">자신의 게시글은 구매할 수 없습니다</p>
+                      <p className="text-sm text-orange-600">본인이 등록한 게시글은 구매 신청이 불가능합니다.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="bg-blue-50 p-4 rounded-lg mb-6">
                 <div className="flex items-start">
                   <AlertCircle className="h-5 w-5 text-blue-500 mr-2 mt-0.5" />
@@ -523,107 +523,109 @@ export default function TicketCancellationDetail() {
                 </div>
               </div>
 
-              <form onSubmit={handleSubmit}>
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">좌석 선택(중복 선택 가능)</label>
-                  <div 
-                    className="flex flex-wrap gap-2 mt-4 items-center"
-                  >
-                    {ticketData.seatOptions.map((seat: SeatOption) => (
-                      <button
-                        key={seat.id}
-                        className={`border rounded-md px-4 py-2 flex flex-col items-center transition-colors ${
-                          selectedSeats.includes(seat.id)
-                            ? "bg-blue-50 border-blue-500"
-                            : "hover:bg-gray-50"
-                        }`}
-                        onClick={() => toggleSeatSelection(seat.id)}
-                      >
-                        <p className="font-medium">{seat.label}</p>
-                        <p className="text-gray-600 mt-1">{seat.price.toLocaleString()}원</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-6 mb-6">
-                  <div>
-                    <label htmlFor="accountId" className="block text-sm font-medium text-gray-700 mb-2">
-                      구매자 아이디
-                    </label>
-                    <Input
-                      id="accountId"
-                      type="text"
-                      placeholder="예매 사이트 아이디를 입력해주세요"
-                      value={accountId}
-                      onChange={(e) => setAccountId(e.target.value)}
-                      required
-                    />
+              {user && !isAuthor && (
+                <form onSubmit={handleSubmit}>
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">좌석 선택(중복 선택 가능)</label>
+                    <div 
+                      className="flex flex-wrap gap-2 mt-4 items-center"
+                    >
+                      {ticketData.seatOptions.map((seat: SeatOption) => (
+                        <button
+                          key={seat.id}
+                          className={`border rounded-md px-4 py-2 flex flex-col items-center transition-colors ${
+                            selectedSeats.includes(seat.id)
+                              ? "bg-blue-50 border-blue-500"
+                              : "hover:bg-gray-50"
+                          }`}
+                          onClick={() => toggleSeatSelection(seat.id)}
+                        >
+                          <p className="font-medium">{seat.label}</p>
+                          <p className="text-gray-600 mt-1">{seat.price.toLocaleString()}원</p>
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  <div>
-                    <label htmlFor="accountPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                      구매자 비밀번호
-                    </label>
-                    <Input
-                      id="accountPassword"
-                      type="password"
-                      placeholder="예매 사이트 비밀번호를 입력해주세요"
-                      value={accountPassword}
-                      onChange={(e) => setAccountPassword(e.target.value)}
-                      required
-                    />
-                    <p className="text-sm text-gray-500 mt-1">예매 사이트에서 사용하는 계정 정보를 입력해주세요.</p>
+                  <div className="space-y-6 mb-6">
+                    <div>
+                      <label htmlFor="accountId" className="block text-sm font-medium text-gray-700 mb-2">
+                        구매자 아이디
+                      </label>
+                      <Input
+                        id="accountId"
+                        type="text"
+                        placeholder="예매 사이트 아이디를 입력해주세요"
+                        value={accountId}
+                        onChange={(e) => setAccountId(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="accountPassword" className="block text-sm font-medium text-gray-700 mb-2">
+                        구매자 비밀번호
+                      </label>
+                      <Input
+                        id="accountPassword"
+                        type="password"
+                        placeholder="예매 사이트 비밀번호를 입력해주세요"
+                        value={accountPassword}
+                        onChange={(e) => setAccountPassword(e.target.value)}
+                        required
+                      />
+                      <p className="text-sm text-gray-500 mt-1">예매 사이트에서 사용하는 계정 정보를 입력해주세요.</p>
+                    </div>
+
+                    <div>
+                      <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+                        구매자 이름
+                      </label>
+                      <Input
+                        id="name"
+                        type="text"
+                        placeholder="실명을 입력해주세요"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-2">
+                        주소
+                      </label>
+                      <Input
+                        id="address"
+                        type="text"
+                        placeholder="배송지 주소를 입력해주세요"
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
+                        연락처
+                      </label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        placeholder="010-0000-0000"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        required
+                      />
+                      <p className="text-sm text-gray-500 mt-1">취소표 발생 시 알림을 받을 연락처를 입력해주세요.</p>
+                    </div>
                   </div>
 
-                  <div>
-                    <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                      구매자 이름
-                    </label>
-                    <Input
-                      id="name"
-                      type="text"
-                      placeholder="실명을 입력해주세요"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-2">
-                      주소
-                    </label>
-                    <Input
-                      id="address"
-                      type="text"
-                      placeholder="배송지 주소를 입력해주세요"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                      연락처
-                    </label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="010-0000-0000"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      required
-                    />
-                    <p className="text-sm text-gray-500 mt-1">취소표 발생 시 알림을 받을 연락처를 입력해주세요.</p>
-                  </div>
-                </div>
-
-                <Button type="submit" className="w-full bg-[#0061FF] hover:bg-[#0052D6]" disabled={isSubmitting}>
-                  {isSubmitting ? "처리 중..." : "취켓팅 신청하기"}
-                </Button>
-              </form>
+                  <Button type="submit" className="w-full bg-[#0061FF] hover:bg-[#0052D6]" disabled={isSubmitting}>
+                    {isSubmitting ? "처리 중..." : "취켓팅 신청하기"}
+                  </Button>
+                </form>
+              )}
             </div>
           </div>
         </div>

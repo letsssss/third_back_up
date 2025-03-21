@@ -64,7 +64,7 @@ export function TicketingStatusCard({ status, message, updatedAt }: TicketingSta
           <h3 className={`text-base font-semibold ${config.textColor}`}>{config.title}</h3>
           {message && (
             <div className={`mt-2 text-sm ${config.textColor.replace("800", "700")}`}>
-              <p>취켓팅 완료 알림을 받으시면 계정에 접속해 티켓을 확인 해 보신 후 구매확정을 누르시면 되십니다</p>
+              <p>{message}</p>
             </div>
           )}
           {updatedAt && (

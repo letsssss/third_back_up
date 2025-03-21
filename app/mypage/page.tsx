@@ -60,19 +60,19 @@ export default function MyPage() {
   const [mounted, setMounted] = useState(false)
 
   // 트랜잭션 상태 카운트
-  const purchaseStatus: TransactionStatus = {
+  const [purchaseStatus, setPurchaseStatus] = useState<TransactionStatus>({
     취켓팅진행중: 0,
     취켓팅완료: 0,
     거래완료: 0,
     거래취소: 0,
-  }
+  })
 
-  const saleStatus: TransactionStatus = {
+  const [saleStatus, setSaleStatus] = useState<TransactionStatus>({
     취켓팅진행중: 0,
     취켓팅완료: 0,
     거래완료: 0,
     거래취소: 0,
-  }
+  })
 
   // 마운트 확인
   useEffect(() => {
@@ -92,6 +92,10 @@ export default function MyPage() {
     if (user) {
       // 알림은 페이지 로드 시 항상 가져옴 (알림 카운트 표시를 위해)
       fetchNotifications();
+      
+      // 페이지 로드 시 구매/판매 현황 데이터 가져오기
+      fetchOngoingPurchases();
+      fetchOngoingSales();
     }
   }, [user]);
 
@@ -135,17 +139,58 @@ export default function MyPage() {
         setOngoingSales([]);
         return;
       }
+      
+      // 상태 카운트 초기화
+      const newSaleStatus = {
+        취켓팅진행중: 0,
+        취켓팅완료: 0,
+        거래완료: 0,
+        거래취소: 0,
+      };
         
       // API 응답을 화면에 표시할 형식으로 변환
-      const salesData = data.posts.map((post: any) => ({
-        id: post.id,
-        title: post.title || post.eventName || "제목 없음",
-        date: post.eventDate || new Date(post.createdAt).toLocaleDateString(),
-        price: `${post.ticketPrice?.toLocaleString() || '가격 정보 없음'}원`,
-        status: post.category === 'TICKET_CANCELLATION' ? "취켓팅 판매중" : "판매중"
-      }));
+      const salesData = data.posts.map((post: any) => {
+        // 판매 상태에 따라 카운트 증가
+        const postStatus = post.status || '';
+        const category = post.category || '';
+        
+        if (category === 'TICKET_CANCELLATION') {
+          if (postStatus === 'ACTIVE') {
+            newSaleStatus.취켓팅진행중 += 1;
+          } else if (postStatus === 'PENDING_PAYMENT') {
+            newSaleStatus.취켓팅완료 += 1;
+          } else if (postStatus === 'COMPLETED') {
+            newSaleStatus.거래완료 += 1;
+          } else if (postStatus === 'CANCELLED') {
+            newSaleStatus.거래취소 += 1;
+          }
+        } else {
+          // 일반 판매의 경우
+          if (postStatus === 'ACTIVE') {
+            newSaleStatus.취켓팅진행중 += 1;
+          } else if (postStatus === 'PENDING_PAYMENT') {
+            newSaleStatus.취켓팅완료 += 1;
+          } else if (postStatus === 'COMPLETED') {
+            newSaleStatus.거래완료 += 1;
+          } else if (postStatus === 'CANCELLED') {
+            newSaleStatus.거래취소 += 1;
+          }
+        }
+        
+        return {
+          id: post.id,
+          title: post.title || post.eventName || "제목 없음",
+          date: post.eventDate || new Date(post.createdAt).toLocaleDateString(),
+          price: `${post.ticketPrice?.toLocaleString() || '가격 정보 없음'}원`,
+          status: post.category === 'TICKET_CANCELLATION' ? "취켓팅 판매중" : "판매중"
+        };
+      });
+      
+      // 상태 업데이트
+      setSaleStatus(newSaleStatus);
         
       console.log("변환된 판매 데이터:", salesData);
+      console.log("판매 상태별 카운트:", newSaleStatus);
       setOngoingSales(salesData);
     } catch (error) {
       console.error('판매 목록 로딩 오류:', error);
@@ -187,17 +232,43 @@ export default function MyPage() {
         return;
       }
       
+      // 상태 카운트 초기화
+      const newPurchaseStatus = {
+        취켓팅진행중: 0,
+        취켓팅완료: 0,
+        거래완료: 0,
+        거래취소: 0,
+      };
+      
       // API 응답을 화면에 표시할 형식으로 변환
-      const purchasesData = data.purchases.map((purchase: any) => ({
-        id: purchase.id,
-        title: purchase.post?.title || purchase.post?.eventName || "제목 없음",
-        date: purchase.post?.eventDate || new Date(purchase.createdAt).toLocaleDateString(),
-        price: `${purchase.totalPrice?.toLocaleString() || '가격 정보 없음'}원`,
-        status: getStatusText(purchase.status),
-        sellerId: purchase.sellerId
-      }));
+      const purchasesData = data.purchases.map((purchase: any) => {
+        // 상태에 따라 카운트 증가
+        const status = purchase.status;
+        if (status === 'PENDING') {
+          newPurchaseStatus.취켓팅진행중 += 1;
+        } else if (status === 'PROCESSING') {
+          newPurchaseStatus.취켓팅완료 += 1;
+        } else if (status === 'COMPLETED') {
+          newPurchaseStatus.거래완료 += 1;
+        } else if (status === 'CANCELLED') {
+          newPurchaseStatus.거래취소 += 1;
+        }
+        
+        return {
+          id: purchase.id,
+          title: purchase.post?.title || purchase.post?.eventName || "제목 없음",
+          date: purchase.post?.eventDate || new Date(purchase.createdAt).toLocaleDateString(),
+          price: `${purchase.totalPrice?.toLocaleString() || '가격 정보 없음'}원`,
+          status: getStatusText(purchase.status),
+          sellerId: purchase.sellerId
+        };
+      });
+      
+      // 상태 업데이트
+      setPurchaseStatus(newPurchaseStatus);
       
       console.log("변환된 구매 데이터:", purchasesData);
+      console.log("상태별 카운트:", newPurchaseStatus);
       setOngoingPurchases(purchasesData);
     } catch (error) {
       console.error('구매 목록 로딩 오류:', error);

@@ -108,15 +108,13 @@ export async function POST(request: NextRequest) {
       ));
     }
 
-    // 자신의 게시글 구매 가능하도록 검증 제거
-    /* 계정이 다르면 다른 사람으로 인식하도록 수정
+    // 자신의 게시글인지 확인
     if (post.authorId === authUser.id) {
       return addCorsHeaders(NextResponse.json(
         { success: false, message: "자신의 게시글은 구매할 수 없습니다." },
         { status: 400 }
       ));
     }
-    */
 
     if (post.status !== "ACTIVE") {
       return addCorsHeaders(NextResponse.json(
