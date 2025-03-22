@@ -110,6 +110,7 @@ export function UserInfoForm({ onSubmit }: UserInfoFormProps) {
               type="number"
               value={userData.age}
               onChange={handleChange}
+              onWheel={(e) => e.preventDefault()}
               placeholder="나이"
               required
               className="w-full"

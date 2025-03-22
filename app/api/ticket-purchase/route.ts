@@ -108,13 +108,18 @@ export async function POST(request: NextRequest) {
       ));
     }
 
-    // 자신의 게시글인지 확인
-    if (post.authorId === authUser.id) {
+    // 자신의 게시글인지 확인 - 문자열로 변환하여 비교
+    console.log("API - 게시글 작성자 ID:", post.authorId.toString(), typeof post.authorId);
+    console.log("API - 사용자 ID:", authUser.id.toString(), typeof authUser.id);
+    
+    if (post.authorId.toString() === authUser.id.toString()) {
+      console.log("API - 작성자와 사용자가 일치함");
       return addCorsHeaders(NextResponse.json(
         { success: false, message: "자신의 게시글은 구매할 수 없습니다." },
         { status: 400 }
       ));
     }
+    console.log("API - 작성자와 사용자가 다름");
 
     if (post.status !== "ACTIVE") {
       return addCorsHeaders(NextResponse.json(

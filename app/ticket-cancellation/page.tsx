@@ -197,17 +197,9 @@ export default function TicketCancellationPage() {
 
   // 초기 렌더링을 위한 더미 UI 컴포넌트
   const AuthButtons = () => {
+    // mounted 상태가 아닐 때는 아무것도 표시하지 않음
     if (!mounted) {
-      return (
-        <>
-          <button className="text-gray-700 hover:text-[#0061FF] transition-colors whitespace-nowrap opacity-0">
-            로그인
-          </button>
-          <div className="text-gray-700 hover:text-[#0061FF] transition-colors whitespace-nowrap opacity-0">
-            마이페이지
-          </div>
-        </>
-      );
+      return null;
     }
 
     if (user) {
@@ -265,7 +257,7 @@ export default function TicketCancellationPage() {
               </Link>
             </div>
             <div className="flex items-center space-x-6">
-              {user ? (
+              {mounted && user ? (
                 <>
                   <div className="text-gray-700">
                     <span className="font-medium text-[#0061FF]">{user.name}</span>님 환영합니다
@@ -276,8 +268,11 @@ export default function TicketCancellationPage() {
                     장바구니
                   </Link>
                 </>
-              ) : (
+              ) : mounted ? (
                 <AuthButtons />
+              ) : (
+                // 마운트되기 전에는 아무것도 렌더링하지 않음
+                <div className="invisible">로딩 중...</div>
               )}
               <button
                 onClick={() => router.push("/sell")}

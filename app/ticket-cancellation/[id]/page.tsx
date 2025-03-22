@@ -63,10 +63,19 @@ export default function TicketCancellationDetail() {
   const [isSuccess, setIsSuccess] = useState(false)
   const [accountId, setAccountId] = useState("")
   const [accountPassword, setAccountPassword] = useState("")
-  const [name, setName] = useState(user?.name || "")
+  const [name, setName] = useState("")
   const [address, setAddress] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isAuthor, setIsAuthor] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  // 마운트 상태 관리
+  useEffect(() => {
+    setMounted(true)
+    if (user?.name) {
+      setName(user.name)
+    }
+  }, [user])
 
   // 게시글 데이터 불러오기
   useEffect(() => {
@@ -184,8 +193,21 @@ export default function TicketCancellationDetail() {
         });
         
         // 사용자가 게시글 작성자인지 확인
-        if (user && postData.author && user.id.toString() === postData.author.id.toString()) {
-          setIsAuthor(true);
+        console.log("사용자 ID 확인:", user?.id?.toString());
+        console.log("게시글 작성자 ID 확인:", postData.author?.id?.toString());
+        
+        if (user && postData.author) {
+          const userId = user.id.toString();
+          const authorId = postData.author.id.toString();
+          
+          console.log("비교 결과:", userId === authorId);
+          
+          if (userId === authorId) {
+            console.log("사용자가 작성자로 확인됨");
+            setIsAuthor(true);
+          } else {
+            setIsAuthor(false);
+          }
         }
         
         setError(null);
@@ -199,13 +221,6 @@ export default function TicketCancellationDetail() {
     
     fetchPostData();
   }, [id]);
-
-  // 로그인 상태가 변경되면 이름 필드 업데이트
-  useEffect(() => {
-    if (user) {
-      setName(user.name)
-    }
-  }, [user])
 
   // Trigger confetti effect when success page is shown
   useEffect(() => {
@@ -236,6 +251,12 @@ export default function TicketCancellationDetail() {
       return
     }
 
+    // 자신의 게시글인지 확인
+    if (isAuthor) {
+      toast.error("자신의 게시글은 구매할 수 없습니다.")
+      return
+    }
+    
     if (selectedSeats.length === 0) {
       toast.error("좌석을 하나 이상 선택해주세요.")
       return
@@ -486,7 +507,7 @@ export default function TicketCancellationDetail() {
 
             <div className="p-6">
               <h2 className="text-xl font-semibold mb-4">취켓팅 신청하기</h2>
-              {!user && (
+              {mounted && !user && (
                 <div className="bg-yellow-50 p-4 rounded-lg mb-6">
                   <div className="flex items-start">
                     <AlertCircle className="h-5 w-5 text-yellow-500 mr-2 mt-0.5" />
@@ -500,7 +521,7 @@ export default function TicketCancellationDetail() {
                   </div>
                 </div>
               )}
-              {user && isAuthor && (
+              {mounted && user && isAuthor && (
                 <div className="bg-orange-50 p-4 rounded-lg mb-6">
                   <div className="flex items-start">
                     <AlertCircle className="h-5 w-5 text-orange-500 mr-2 mt-0.5" />
@@ -523,7 +544,7 @@ export default function TicketCancellationDetail() {
                 </div>
               </div>
 
-              {user && !isAuthor && (
+              {mounted && user && !isAuthor && (
                 <form onSubmit={handleSubmit}>
                   <div className="mb-6">
                     <label className="block text-sm font-medium text-gray-700 mb-2">좌석 선택(중복 선택 가능)</label>

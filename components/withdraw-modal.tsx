@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import { ArrowRight, Calendar, CreditCard, AlertCircle, Wallet } from "lucide-react"
+import { toast } from "sonner"
 
 interface WithdrawModalProps {
   isOpen: boolean
@@ -87,7 +88,19 @@ export function WithdrawModal({ isOpen, onClose, balance }: WithdrawModalProps) 
                       <Input
                         type="number"
                         value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
+                        onChange={(e) => {
+                          const newValue = e.target.value;
+                          // 입력값이 예치금을 초과하지 않도록 제한
+                          if (newValue === '' || Number(newValue) <= balance) {
+                            setAmount(newValue);
+                          } else {
+                            // 예치금을 초과할 경우 최대값(balance)으로 설정
+                            setAmount(balance.toString());
+                            // 사용자에게 알림
+                            toast.warning("예치금 보유액을 초과하여 입력할 수 없습니다.");
+                          }
+                        }}
+                        onWheel={(e) => e.preventDefault()}
                         placeholder="예치금"
                         className="text-right flex-1 h-12 text-lg"
                       />
@@ -103,6 +116,11 @@ export function WithdrawModal({ isOpen, onClose, balance }: WithdrawModalProps) 
                       출금 후 잔액:{" "}
                       <span className="font-medium">{(balance - Number(amount || 0)).toLocaleString()}원</span>
                     </div>
+                    {Number(amount) > 0 && Number(amount) === balance && (
+                      <div className="text-xs text-amber-500 text-right mt-1">
+                        * 예치금 전액을 출금 신청합니다
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -113,8 +131,7 @@ export function WithdrawModal({ isOpen, onClose, balance }: WithdrawModalProps) 
                       <span className="font-medium">케이뱅크(100166020***)</span>
                       <Button
                         variant="outline"
-                        size="sm"
-                        className="ml-2 border-blue-200 text-blue-600 hover:bg-blue-50"
+                        className="ml-2 border-blue-200 text-blue-600 hover:bg-blue-50 text-sm py-1 px-2"
                       >
                         계좌변경
                       </Button>

@@ -79,6 +79,7 @@ export default function AdminPage() {
           name="price"
           value={newTicket.price}
           onChange={handleInputChange}
+          onWheel={(e) => e.preventDefault()}
           placeholder="가격"
           required
         />
