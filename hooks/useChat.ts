@@ -82,9 +82,9 @@ export function useChat(options: ChatOptions | null = null): ChatReturn {
     // 클라이언트 사이드에서만 실행
     if (typeof window === 'undefined') return;
     
-    // 옵션이 없으면 초기화하지 않음
-    if (!options) {
-      console.log('[useChat] 옵션이 제공되지 않음, 초기화 건너뜀');
+    // 옵션이 없거나 필수 정보가 없으면 초기화하지 않음
+    if (!options || !options.transactionId) {
+      console.log('[useChat] 옵션이 제공되지 않았거나 거래 ID가 없음, 초기화 건너뜀');
       setIsLoading(false);
       return;
     }
@@ -119,7 +119,7 @@ export function useChat(options: ChatOptions | null = null): ChatReturn {
     
     setActualUserId(id);
     console.log('[useChat] 사용자 ID 설정:', id);
-  }, [userId]);
+  }, [userId, options]);
 
   // Socket.io 서버 설정 및 연결 관리
   const setupSocket = useCallback(() => {

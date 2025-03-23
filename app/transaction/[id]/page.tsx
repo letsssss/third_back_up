@@ -78,21 +78,6 @@
       error: chatError
     } = useChat(chatReady ? chatProps : null)
 
-    // 채팅 속성 설정
-    useEffect(() => {
-      if (transaction && currentUserId && currentUserRole) {
-        setChatProps({
-          transactionId: params?.id as string,
-          userId: currentUserId,
-          userRole: currentUserRole,
-          otherUserId: currentUserRole === 'buyer' 
-            ? transaction?.seller?.id
-            : transaction?.buyer?.id
-        });
-        setChatReady(true);
-      }
-    }, [transaction, currentUserId, currentUserRole, params?.id]);
-
     // 채팅 디버깅을 위한 로그 추가
     useEffect(() => {
       console.log('구매자 채팅 상태:', {
@@ -129,6 +114,7 @@
           return false;
         }
         
+        await fetchMessages(); // 새 메시지 전송 후 다시 불러오기 추가
         return true;
       } catch (error) {
         console.error('메시지 전송 오류:', error);
@@ -293,6 +279,19 @@
           
           console.log('변환된 트랜잭션 데이터:', formattedTransaction);
           setTransaction(formattedTransaction);
+          
+          // ✅ 구매자와 판매자 ID가 모두 존재할 때만 채팅 준비
+          if (purchaseData.purchase.buyer?.id && purchaseData.purchase.seller?.id) {
+            setChatProps({
+              transactionId: id,
+              userId,
+              userRole,
+              otherUserId: userRole === 'buyer' 
+                ? purchaseData.purchase.seller.id.toString() 
+                : purchaseData.purchase.buyer.id.toString()
+            });
+            setChatReady(true);
+          }
         } catch (error) {
           console.error('거래 정보 로딩 오류:', error);
           toast({

@@ -8,149 +8,119 @@ datasource db {
 }
 
 model User {
-  id            Int      @id @default(autoincrement())
-  email         String   @unique
-  password      String
-  name          String?
-  role          Role     @default(USER)
-  profileImage  String?
-  phoneNumber   String?
-  bankInfo      String?  // 은행 정보를 JSON 문자열로 저장
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  refreshToken  String?  // JWT 토큰 관리를 위한 필드
-  posts         Post[]   // 사용자가 작성한 글
-  notifications Notification[] // 사용자가 받은 알림
-  purchases     Purchase[] @relation("Buyer")  // 사용자가 구매한 티켓
-  sales         Purchase[] @relation("Seller") // 사용자가 판매한 티켓
-  sentMessages     Message[] @relation("Sender")     // 보낸 메시지
-  receivedMessages Message[] @relation("Receiver")   // 받은 메시지
+  id                 Int               @id @default(autoincrement())
+  email              String            @unique
+  password           String
+  name               String?
+  role               String            @default("USER")
+  profileImage       String?
+  phoneNumber        String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  refreshToken       String?
+  bankInfo           String?
+  receivedMessages   Message[]         @relation("Receiver")
+  sentMessages       Message[]         @relation("Sender")
+  notifications      Notification[]
+  posts              Post[]
+  sales              Purchase[]        @relation("Seller")
+  purchases          Purchase[]        @relation("Buyer")
   roomParticipations RoomParticipant[]
 }
 
-enum Role {
-  USER
-  ADMIN
-  SELLER
-}
-
-// 글(게시물) 모델
 model Post {
-  id          Int       @id @default(autoincrement())
-  title       String
-  content     String
-  category    String    @default("GENERAL")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  authorId    Int
-  author      User      @relation(fields: [authorId], references: [id])
-  isDeleted   Boolean   @default(false)
-  viewCount   Int       @default(0)
-  
-  // 공연 관련 필드 (티켓 취소 글인 경우)
-  eventName   String?
-  eventDate   String?
-  eventVenue  String?
-  ticketPrice BigInt?
-  contactInfo String?
-  status      String?   @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
-  
-  // 알림 관계 추가
+  id            Int            @id @default(autoincrement())
+  title         String
+  content       String
+  category      String         @default("GENERAL")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  authorId      Int
+  isDeleted     Boolean        @default(false)
+  viewCount     Int            @default(0)
+  eventName     String?
+  eventDate     String?
+  eventVenue    String?
+  ticketPrice   BigInt?
+  contactInfo   String?
+  status        String?        @default("ACTIVE")
   notifications Notification[]
-  
-  // 구매 관계 추가
-  purchases   Purchase[]
+  author        User           @relation(fields: [authorId], references: [id])
+  purchases     Purchase[]
 }
 
-// 알림 모델
 model Notification {
-  id         Int       @id @default(autoincrement())
-  userId     Int       // 알림을 받을 사용자 ID
-  user       User      @relation(fields: [userId], references: [id])
-  postId     Int?      // 관련 게시글 ID (선택 사항)
-  post       Post?     @relation(fields: [postId], references: [id])
-  message    String    // 알림 메시지
-  type       String    // 알림 유형 (PURCHASE, COMMENT, SYSTEM 등)
-  isRead     Boolean   @default(false) // 읽음 여부
-  createdAt  DateTime  @default(now())
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  postId    Int?
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  post      Post?    @relation(fields: [postId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 }
 
-// 구매 모델
 model Purchase {
-  id                Int       @id @default(autoincrement())
-  buyerId           Int       // 구매자 ID
-  buyer             User      @relation("Buyer", fields: [buyerId], references: [id])
-  sellerId          Int       // 판매자 ID
-  seller            User      @relation("Seller", fields: [sellerId], references: [id])
-  postId            Int       // 관련 게시글 ID
-  post              Post      @relation(fields: [postId], references: [id])
-  quantity          Int       @default(1) // 구매 수량
-  totalPrice        BigInt    // 총 구매 가격
-  status            String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, CANCELLED
-  paymentMethod     String?   // 결제 방법
-  selectedSeats     String?   // 선택한 좌석 (JSON 문자열로 저장)
-  phoneNumber       String?   // 연락처
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  messages          Message[] // 거래와 관련된 메시지들
-  room              Room?     // 구매와 연결된 채팅방
+  id            Int       @id @default(autoincrement())
+  buyerId       Int
+  sellerId      Int
+  postId        Int
+  quantity      Int       @default(1)
+  totalPrice    BigInt
+  status        String    @default("PENDING")
+  paymentMethod String?
+  selectedSeats String?
+  phoneNumber   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  messages      Message[]
+  post          Post      @relation(fields: [postId], references: [id])
+  seller        User      @relation("Seller", fields: [sellerId], references: [id])
+  buyer         User      @relation("Buyer", fields: [buyerId], references: [id])
+  room          Room?
 }
 
-// 채팅방 모델 추가
 model Room {
-  id              Int       @id @default(autoincrement())
-  name            String    @unique // 고유 채팅방 식별자
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  // null: 둘 다 읽기 가능, 특정 유저의 아이디: 해당 유저만 읽기 불가능 (채팅방 나가기 기능)
+  id              Int               @id @default(autoincrement())
+  name            String            @unique
   chatInvisibleTo Int?
-  lastChat        String?   // 마지막 채팅 내용
-  timeOfLastChat  DateTime? // 마지막 채팅 시간
-  
-  // 채팅방과 연결된 구매 정보
-  purchaseId      Int?      @unique
-  purchase        Purchase? @relation(fields: [purchaseId], references: [id])
-  
-  // 채팅방과 연결된 메시지들
+  lastChat        String?
+  timeOfLastChat  DateTime?
+  purchaseId      Int?              @unique
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
   messages        Message[]
-  
-  // 채팅방 참여자
+  purchase        Purchase?         @relation(fields: [purchaseId], references: [id])
   participants    RoomParticipant[]
 }
 
-// 채팅방 참여자 모델
 model RoomParticipant {
-  id        Int      @id @default(autoincrement())
-  roomId    Int
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  userId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  joinedAt  DateTime @default(now())
-  
-  @@unique([roomId, userId]) // 한 사용자는 한 채팅방에 한 번만 참여할 수 있음
+  id       Int      @id @default(autoincrement())
+  roomId   Int
+  userId   Int
+  joinedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  room     Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
 }
 
-// 메시지 모델 수정
 model Message {
-  id           Int      @id @default(autoincrement())
-  senderId     Int      // 발신자 ID
-  sender       User     @relation("Sender", fields: [senderId], references: [id])
-  receiverId   Int      // 수신자 ID
-  receiver     User     @relation("Receiver", fields: [receiverId], references: [id])
-  content      String   // 메시지 내용
-  isRead       Boolean  @default(false) // 읽음 여부
-  createdAt    DateTime @default(now())
-  
-  // 채팅방 정보 추가
-  roomId       Int?
-  room         Room?    @relation(fields: [roomId], references: [id])
-  
-  // 구매 정보
-  purchaseId   Int?     // 관련 거래 ID (옵션)
-  purchase     Purchase? @relation(fields: [purchaseId], references: [id])
-  
+  id         Int       @id @default(autoincrement())
+  senderId   Int
+  receiverId Int
+  content    String
+  isRead     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  roomId     Int?
+  purchaseId Int?
+  purchase   Purchase? @relation(fields: [purchaseId], references: [id])
+  room       Room?     @relation(fields: [roomId], references: [id])
+  receiver   User      @relation("Receiver", fields: [receiverId], references: [id])
+  sender     User      @relation("Sender", fields: [senderId], references: [id])
+
   @@index([roomId])
   @@index([senderId])
   @@index([receiverId])
 }
-
