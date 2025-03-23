@@ -1,8 +1,6 @@
-import { NextResponse, NextRequest } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth";
-
-const prisma = new PrismaClient();
+import prisma from "@/lib/prisma"; // 싱글톤 인스턴스 사용
 
 // BigInt를 문자열로 변환하는 함수
 function convertBigIntToString(obj: any): any {
@@ -48,17 +46,26 @@ export async function OPTIONS() {
   return addCorsHeaders(new NextResponse(null, { status: 200 }));
 }
 
-// GET 요청 핸들러 - 특정 구매 정보 가져오기
+// GET 요청 처리 함수
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // params가 Promise가 될 수 있으므로 먼저 ID를 추출
-    const id = params?.id;
-    console.log(`구매 정보 조회 API 호출됨 - ID: ${id}`);
+    console.log("거래 상세 정보 조회 API 호출됨");
     
-    // 현재 인증된 사용자 정보 가져오기
+    // URL 파라미터에서 ID 추출 및 검증
+    if (!params || !params.id) {
+      return addCorsHeaders(NextResponse.json(
+        { success: false, message: "유효하지 않은 요청: ID가 제공되지 않았습니다." },
+        { status: 400 }
+      ));
+    }
+    
+    const id = params.id;
+    console.log(`요청된 거래 ID: ${id}`);
+    
+    // 인증된 사용자 확인
     const authUser = await getAuthenticatedUser(request);
     
     if (!authUser) {
@@ -68,12 +75,13 @@ export async function GET(
         { status: 401 }
       ));
     }
-
+    
     console.log("인증된 사용자 ID:", authUser.id);
     
     // ID가 숫자인지 확인
     const purchaseId = parseInt(id);
     if (isNaN(purchaseId)) {
+      console.log("유효하지 않은 구매 ID 형식:", id);
       return addCorsHeaders(NextResponse.json(
         { success: false, message: "유효하지 않은 구매 ID입니다." },
         { status: 400 }
@@ -86,17 +94,13 @@ export async function GET(
         where: { id: purchaseId },
         include: {
           post: {
-            select: {
-              id: true,
-              title: true,
-              eventName: true,
-              eventDate: true,
-              ticketPrice: true,
+            include: {
               author: {
                 select: {
                   id: true,
                   name: true,
                   email: true,
+                  profileImage: true,
                 }
               }
             }
@@ -106,29 +110,33 @@ export async function GET(
               id: true,
               name: true,
               email: true,
+              profileImage: true,
             }
           },
           seller: {
             select: {
               id: true,
-              name: true, 
+              name: true,
               email: true,
+              profileImage: true,
             }
           }
         }
       });
       
       if (!purchase) {
+        console.log(`구매 정보를 찾을 수 없음: ID ${purchaseId}`);
         return addCorsHeaders(NextResponse.json(
           { success: false, message: "해당 구매 정보를 찾을 수 없습니다." },
           { status: 404 }
         ));
       }
       
-      // 구매자나 판매자만 접근 가능하도록 확인
+      // 접근 권한 확인: 구매자나 판매자만 볼 수 있음
       if (purchase.buyerId !== authUser.id && purchase.sellerId !== authUser.id) {
+        console.log(`접근 권한 없음: 사용자 ${authUser.id}는 구매 ID ${purchaseId}에 접근할 수 없음`);
         return addCorsHeaders(NextResponse.json(
-          { success: false, message: "이 구매 정보에 접근할 권한이 없습니다." },
+          { success: false, message: "이 거래 정보를 볼 권한이 없습니다." },
           { status: 403 }
         ));
       }
@@ -141,6 +149,7 @@ export async function GET(
         success: true,
         purchase: serializedPurchase
       }, { status: 200 }));
+      
     } catch (dbError) {
       console.error("데이터베이스 조회 오류:", dbError instanceof Error ? dbError.message : String(dbError));
       console.error("상세 오류:", dbError);
@@ -163,7 +172,5 @@ export async function GET(
         message: "구매 정보 조회 중 오류가 발생했습니다." 
       }, { status: 500 })
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

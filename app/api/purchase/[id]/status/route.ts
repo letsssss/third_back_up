@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
 import { getAuthenticatedUser } from "@/lib/auth";
-
-const prisma = new PrismaClient();
+import prisma from "@/lib/prisma"; // 싱글톤 인스턴스 사용
 
 // CORS 헤더 설정을 위한 함수
 function addCorsHeaders(response: NextResponse) {
@@ -54,8 +52,16 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    // params가 Promise가 될 수 있으므로 먼저 ID를 추출
-    const id = params?.id;
+    // 파라미터 검증
+    if (!params || !params.id) {
+      return addCorsHeaders(NextResponse.json(
+        { success: false, message: "유효하지 않은 요청: ID가 제공되지 않았습니다." },
+        { status: 400 }
+      ));
+    }
+    
+    // 파라미터에서 ID 추출
+    const id = params.id;
     console.log(`거래 상태 업데이트 API 호출됨 - ID: ${id}`);
     
     // 현재 인증된 사용자 정보 가져오기
@@ -246,7 +252,5 @@ export async function PATCH(
         message: "구매 상태 업데이트 중 오류가 발생했습니다." 
       }, { status: 500 })
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

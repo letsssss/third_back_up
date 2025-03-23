@@ -53,12 +53,7 @@ const getUserFromLocalStorage = (): { id?: number, name?: string } => {
 };
 
 // 채팅 커스텀 훅
-export function useChat({
-  transactionId,
-  userId = '',
-  userRole = 'buyer',
-  otherUserId = ''
-}: ChatOptions): ChatReturn {
+export function useChat(options: ChatOptions | null = null): ChatReturn {
   // 상태 관리
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -70,6 +65,12 @@ export function useChat({
   const [conversations, setConversations] = useState<any[]>([]);
   const [hasMore, setHasMore] = useState(true);
   
+  // 옵션 안전하게 추출
+  const transactionId = options?.transactionId || '';
+  const userId = options?.userId || '';
+  const userRole = options?.userRole || 'buyer';
+  const otherUserId = options?.otherUserId || '';
+  
   // Socket 인스턴스와 연결 시도 카운트 참조
   const socketRef = useRef<Socket | null>(null);
   const connectionAttempts = useRef(0);
@@ -80,6 +81,13 @@ export function useChat({
   useEffect(() => {
     // 클라이언트 사이드에서만 실행
     if (typeof window === 'undefined') return;
+    
+    // 옵션이 없으면 초기화하지 않음
+    if (!options) {
+      console.log('[useChat] 옵션이 제공되지 않음, 초기화 건너뜀');
+      setIsLoading(false);
+      return;
+    }
     
     let id: string | null = null;
     
@@ -113,245 +121,251 @@ export function useChat({
     console.log('[useChat] 사용자 ID 설정:', id);
   }, [userId]);
 
-  // setupSocket 함수 선언
+  // Socket.io 서버 설정 및 연결 관리
   const setupSocket = useCallback(() => {
     if (!actualUserId) {
-      console.log('[useChat] 사용자 ID 없음: 소켓 연결 취소');
+      console.log('[useChat] 사용자 ID가 없음, 연결 중단');
       return;
     }
 
-    // 이미 연결이 시도 중이거나 연결된 경우 리턴
-    if (socketRef.current) {
-      console.log('[useChat] 이미 소켓이 존재함, 연결 시도 취소');
+    // 이미 소켓이 존재하고 연결된 경우 스킵
+    if (socketRef.current && socketRef.current.connected) {
+      console.log('[useChat] 이미 연결된 소켓 존재');
       return;
     }
 
+    console.log('[useChat] 소켓 연결 설정 시작');
+    
     try {
-      console.log('[useChat] 소켓 연결 시도:', {
-        userId: actualUserId,
-        transactionId,
-        otherUserId,
-        userRole
-      });
-
-      // 소켓 연결 객체 생성
-      socketRef.current = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000', {
-        path: '/api/socket',
-        withCredentials: true,
-        reconnectionAttempts: 15,
-        timeout: 20000,
-        auth: {
+      // 적절한 소켓 서버 URL 결정
+      const socketURL = 
+        process.env.NEXT_PUBLIC_SOCKET_URL || 
+        (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+      
+      console.log(`[useChat] 소켓 서버 URL: ${socketURL}`);
+      
+      // Socket.io 인스턴스 생성 및 옵션 설정
+      const socket = io(socketURL, {
+        transports: ['websocket', 'polling'],
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 20000, // 타임아웃 증가
+        forceNew: connectionAttempts.current > 0,
+        autoConnect: true, // 자동 연결 활성화
+        reconnection: true, // 재연결 활성화
+        withCredentials: true, // 인증 쿠키 전송 활성화
+        query: {
           userId: actualUserId,
-          token: localStorage.getItem('auth-token') || localStorage.getItem('token') || ''
-        },
-        extraHeaders: {
-          Authorization: `Bearer ${localStorage.getItem('auth-token') || localStorage.getItem('token') || ''}`
+          transactionId: transactionId || ''
         }
       });
-
-      const authToken = localStorage.getItem('auth-token') || localStorage.getItem('token') || '';
-      console.log('[useChat] 소켓 연결 정보:', {
-        userId: actualUserId,
-        hasToken: !!authToken,
-        tokenLength: authToken.length > 0 ? `${authToken.substring(0, 10)}...` : '토큰 없음'
-      });
-
-      // 연결 이벤트 처리
-      socketRef.current.on('connect', () => {
-        console.log('Socket.io 연결 성공!');
+      
+      socketRef.current = socket;
+      
+      // 소켓 이벤트 리스너 설정
+      socket.on('connect', () => {
+        console.log('[useChat] 소켓 연결 성공:', socket.id);
         setSocketConnected(true);
+        setError(null);
         connectionAttempts.current = 0;
         
-        // 거래 ID가 있으면 해당 거래 채팅방에 참여
+        // 연결 성공 시 채팅방 참가
         if (transactionId) {
-          console.log('거래 채팅방 참여 요청:', transactionId);
-          socketRef.current?.emit('createOrJoinRoom', {
+          console.log('[useChat] 채팅방 참가 요청:', {
             purchaseId: transactionId,
             userId: actualUserId,
-            userRole: userRole
+            userRole
+          });
+          
+          socket.emit('createOrJoinRoom', {
+            purchaseId: transactionId,
+            userId: actualUserId,
+            userRole
+          });
+        }
+      });
+      
+      // 연결 오류 처리
+      socket.on('connect_error', (err) => {
+        console.error('[useChat] 소켓 연결 오류:', err.message);
+        console.error('[useChat] 소켓 연결 오류 상세:', err);
+        setError(`연결 오류: ${err.message}`);
+        setSocketConnected(false);
+        
+        // 연결 시도 횟수 증가 및 제한 확인
+        connectionAttempts.current += 1;
+        if (connectionAttempts.current >= 3) {
+          console.error('[useChat] 최대 연결 시도 횟수 초과, 연결 중단');
+          socket.disconnect();
+          
+          // HTTP API 폴백 (지연 실행으로 변경)
+          setTimeout(() => {
+            console.log('[useChat] 최대 연결 시도 초과 후 HTTP API로 메시지 가져오기 시도');
+            setIsLoading(true);
+          }, 1000);
+        }
+      });
+      
+      // 연결 해제 처리
+      socket.on('disconnect', (reason) => {
+        console.log('[useChat] 소켓 연결 해제:', reason);
+        setSocketConnected(false);
+        if (reason === 'io server disconnect') {
+          // 서버에서 연결을 끊은 경우 수동으로 재연결 시도
+          setTimeout(() => {
+            if (socketRef.current) {
+              console.log('[useChat] 서버 연결 해제 후 재연결 시도');
+              socketRef.current.connect();
+            }
+          }, 1000);
+        }
+      });
+
+      // 메시지 수신 이벤트
+      socket.on('message', (newMessage) => {
+        console.log('[useChat] 새 메시지 수신:', newMessage);
+        if (newMessage) {
+          setMessages((prevMessages) => {
+            // 이미 존재하는 메시지인지 확인
+            const isDuplicate = prevMessages.some(
+              (msg) => msg.id === newMessage.id
+            );
+            
+            if (isDuplicate) {
+              return prevMessages;
+            }
+            
+            // 새로운 메시지 형식 변환 및 추가
+            const formattedMessage: Message = {
+              id: newMessage.id,
+              senderId: newMessage.senderId?.toString() || newMessage.userId?.toString() || '',
+              text: newMessage.content || newMessage.text || '',
+              timestamp: newMessage.createdAt || newMessage.timestamp || new Date().toISOString(),
+              isMine: Number(newMessage.senderId || newMessage.userId) === Number(actualUserId),
+              status: 'sent'
+            };
+            
+            return [...prevMessages, formattedMessage];
           });
         }
       });
 
-      // 안전하게 이벤트 리스너 연결
-      if (socketRef.current) {
-        const socket = socketRef.current;
-
-        // 메시지 수신 이벤트
-        socket.on('onReceive', (msg) => {
-          console.log('메시지 수신:', msg);
-          
-          // 이미 존재하는 메시지인지 확인 (중복 방지)
-          setMessages(prev => {
-            const isDuplicate = prev.some(m => 
-              m.id === msg.id || 
-              (m.clientId && m.clientId === msg.clientId)
+      // 메시지 전송 결과 이벤트 (메시지 상태 업데이트)
+      socket.on('messageSent', (data) => {
+        console.log('메시지 전송 결과:', data);
+        // 임시 메시지의 상태 업데이트
+        if (data && data.messageId) {
+          if (data.status === 'sent' || data.status === 'success') {
+            // 성공적으로 전송된 메시지 상태 업데이트
+            updateMessageStatus(
+              data.clientId || data.messageId, 
+              'sent', 
+              data.messageId
             );
-            
-            if (!isDuplicate) {
-              const receivedMessage: Message = {
-                id: msg.id || `temp-${Date.now()}`,
-                senderId: String(msg.senderId || msg.user?.id),
-                text: msg.content || msg.chat,
-                timestamp: msg.createdAt || new Date().toISOString(),
-                isMine: String(msg.senderId || msg.user?.id) === actualUserId,
-                status: 'sent',
-                clientId: msg.clientId
-              };
-              
-              return [...prev, receivedMessage];
-            }
-            return prev;
-          });
-        });
-        
-        // 메시지 전송 결과 이벤트 (메시지 상태 업데이트)
-        socket.on('messageSent', (data) => {
-          console.log('메시지 전송 결과:', data);
-          // 임시 메시지의 상태 업데이트
-          if (data && data.messageId) {
-            if (data.status === 'sent' || data.status === 'success') {
-              // 성공적으로 전송된 메시지 상태 업데이트
-              updateMessageStatus(
-                data.clientId || data.messageId, 
-                'sent', 
-                data.messageId
-              );
-              console.log('메시지 전송 성공:', data.messageId);
-            } else if (data.status === 'failed') {
-              // 실패한 메시지 상태 업데이트
-              updateMessageStatus(
-                data.clientId || data.messageId, 
-                'failed'
-              );
-              console.error('메시지 전송 실패:', data.error || '알 수 없는 오류');
-            }
-          }
-        });
-        
-        // 채팅방 참가 결과 이벤트
-        socket.on('roomJoined', (data) => {
-          console.log('채팅방 참가 결과:', data);
-          if (data && data.messages && Array.isArray(data.messages)) {
-            const formattedMessages = data.messages.map((msg: any) => ({
-              id: msg.id,
-              senderId: Number(msg.senderId),
-              text: msg.content,
-              timestamp: msg.createdAt || msg.timestamp,
-              isMine: Number(msg.senderId) === Number(actualUserId),
-              status: 'sent'
-            }));
-            setMessages(formattedMessages);
-          }
-        });
-        
-        // 채팅 기록 이벤트
-        socket.on('chatHistory', (data) => {
-          console.log('채팅 기록 수신:', data);
-          if (data && data.messages && Array.isArray(data.messages)) {
-            const formattedMessages = data.messages.map((msg: any) => ({
-              id: msg.id,
-              senderId: Number(msg.senderId || msg.user?.id),
-              text: msg.content,
-              timestamp: msg.createdAt || msg.timestamp,
-              isMine: Number(msg.senderId || msg.user?.id) === Number(actualUserId),
-              status: 'sent'
-            }));
-            setMessages(formattedMessages);
-          }
-        });
-        
-        // 소켓 오류 이벤트
-        socket.on('socketError', (error) => {
-          console.error('소켓 오류:', error);
-        });
-        
-        // 연결 해제 시 이벤트
-        socket.on('disconnect', (reason) => {
-          console.log('Socket.io 연결 해제됨, 이유:', reason);
-          setSocketConnected(false);
-          
-          // 자동 재연결이 불가능한 경우에만 수동으로 재연결 시도
-          if (reason === 'io server disconnect' || reason === 'io client disconnect') {
-            console.log('수동 재연결 시도...');
-            setTimeout(() => socketRef.current?.connect(), 1000);
-          }
-        });
-        
-        // 재연결 시도 이벤트
-        socket.on('reconnect_attempt', (attemptNumber) => {
-          console.log(`재연결 시도 ${attemptNumber}번째...`);
-        });
-        
-        // 재연결 성공 이벤트
-        socket.on('reconnect', (attemptNumber) => {
-          console.log(`재연결 성공! (${attemptNumber}번째 시도)`);
-          setSocketConnected(true);
-          
-          // 재연결 후 채팅방 재참가
-          console.log('재연결 후 채팅방 재참가 시도');
-          socketRef.current?.emit('createOrJoinRoom', {
-            purchaseId: transactionId,
-            userId: actualUserId,
-            userRole: userRole
-          });
-        });
-        
-        // 오류 이벤트
-        socket.on('error', (error) => {
-          const errorInfo = error ? 
-            (typeof error === 'object' ? JSON.stringify(error, null, 2) : error) : 
-            '알 수 없는 오류';
-          console.error('Socket.io 오류 발생:', errorInfo);
-          
-          // 소켓 오류가 발생해도 메시지 로드 시도
-          if ((errorInfo.includes('인증') || errorInfo.includes('auth')) && !isLoading) {
-            console.log('인증 오류 발생으로 HTTP API 통해 메시지 로드 시도');
-            fetchMessages(true).catch(err => 
-              console.error('메시지 로드 실패:', err)
+            console.log('메시지 전송 성공:', data.messageId);
+          } else if (data.status === 'failed') {
+            // 실패한 메시지 상태 업데이트
+            updateMessageStatus(
+              data.clientId || data.messageId, 
+              'failed'
             );
+            console.error('메시지 전송 실패:', data.error || '알 수 없는 오류');
           }
+        }
+      });
+      
+      // 채팅방 참가 결과 이벤트
+      socket.on('roomJoined', (data) => {
+        console.log('채팅방 참가 결과:', data);
+        if (data && data.messages && Array.isArray(data.messages)) {
+          const formattedMessages = data.messages.map((msg: any) => ({
+            id: msg.id,
+            senderId: Number(msg.senderId),
+            text: msg.content,
+            timestamp: msg.createdAt || msg.timestamp,
+            isMine: Number(msg.senderId) === Number(actualUserId),
+            status: 'sent'
+          }));
+          setMessages(formattedMessages);
+        }
+      });
+      
+      // 채팅 기록 이벤트
+      socket.on('chatHistory', (data) => {
+        console.log('채팅 기록 수신:', data);
+        if (data && data.messages && Array.isArray(data.messages)) {
+          const formattedMessages = data.messages.map((msg: any) => ({
+            id: msg.id,
+            senderId: Number(msg.senderId || msg.user?.id),
+            text: msg.content,
+            timestamp: msg.createdAt || msg.timestamp,
+            isMine: Number(msg.senderId || msg.user?.id) === Number(actualUserId),
+            status: 'sent'
+          }));
+          setMessages(formattedMessages);
+        }
+      });
+      
+      // 소켓 오류 이벤트
+      socket.on('socketError', (error) => {
+        console.error('소켓 오류:', error);
+      });
+      
+      // 재연결 시도 이벤트
+      socket.on('reconnect_attempt', (attemptNumber) => {
+        console.log(`재연결 시도 ${attemptNumber}번째...`);
+      });
+      
+      // 재연결 성공 이벤트
+      socket.on('reconnect', (attemptNumber) => {
+        console.log(`재연결 성공! (${attemptNumber}번째 시도)`);
+        setSocketConnected(true);
+        
+        // 재연결 후 채팅방 재참가
+        console.log('재연결 후 채팅방 재참가 시도');
+        socket.emit('createOrJoinRoom', {
+          purchaseId: transactionId,
+          userId: actualUserId,
+          userRole: userRole
         });
+      });
+      
+      // 오류 이벤트
+      socket.on('error', (error) => {
+        const errorInfo = error ? 
+          (typeof error === 'object' ? JSON.stringify(error, null, 2) : error) : 
+          '알 수 없는 오류';
+        console.error('Socket.io 오류 발생:', errorInfo);
+        
+        // 소켓 오류가 발생해도 메시지 로드 시도
+        if ((errorInfo.includes('인증') || errorInfo.includes('auth')) && !isLoading) {
+          console.log('인증 오류 발생으로 HTTP API 통해 메시지 로드 시도');
+          fetchMessages(true).catch(err => 
+            console.error('메시지 로드 실패:', err)
+          );
+        }
+      });
 
-        // 연결 오류 이벤트
-        socket.on('connect_error', (error) => {
-          const errorInfo = error ? 
-            (typeof error === 'object' ? JSON.stringify(error, null, 2) : error) : 
-            '알 수 없는 오류';
-          console.error('Socket.io 연결 오류:', errorInfo);
-          
-          // 인증 관련 오류인 경우 추가 디버깅 정보 제공
-          if (errorInfo.includes('인증') || errorInfo.includes('auth')) {
-            const authToken = localStorage.getItem('auth-token') || localStorage.getItem('token') || '';
-            console.error('Socket.io 인증 오류 - 추가 정보:', {
-              userId: actualUserId,
-              hasToken: !!authToken,
-              tokenLength: authToken.length > 0 ? `${authToken.substring(0, 10)}...` : '토큰 없음',
-              tokenProvider: authToken ? (localStorage.getItem('auth-token') ? 'auth-token' : 'token') : '없음',
-              cookieAvailable: document.cookie.includes('token') || document.cookie.includes('auth-token')
-            });
-            
-            // 인증 오류 발생 시 에러 메시지 설정
-            setError('소켓 연결 인증 오류 발생');
-          }
-        });
-
-        // 재연결 실패 이벤트
-        socket.on('reconnect_failed', () => {
-          console.error('Socket.io 재연결 실패');
-          setSocketConnected(false);
-          
-          // 재연결 실패 시 다시 연결 시도
-          console.log('재연결 완전 실패 후 소켓 재생성 시도...');
-          setTimeout(setupSocket, 2000);
-        });
-      }
-
-      return socketRef.current;
-    } catch (error) {
-      console.error('[useChat] 소켓 연결 생성 중 오류:', error);
-      setError('소켓 연결 실패');
-      return null;
+      // 재연결 실패 이벤트
+      socket.on('reconnect_failed', () => {
+        console.error('Socket.io 재연결 실패');
+        setSocketConnected(false);
+        
+        // 재연결 실패 시 다시 연결 시도
+        console.log('재연결 완전 실패 후 소켓 재생성 시도...');
+        setTimeout(setupSocket, 2000);
+      });
+    } catch (socketInitError: any) {
+      console.error('[useChat] 소켓 연결 생성 중 오류:', socketInitError);
+      console.error('[useChat] 오류 상세:', socketInitError.message || '알 수 없는 오류');
+      setError('소켓 연결 실패: ' + (socketInitError.message || '서버에 연결할 수 없습니다'));
+      
+      // 지연된 API 호출로 변경
+      setTimeout(() => {
+        console.log('[useChat] 소켓 연결 실패 후 HTTP API로 메시지 가져오기 시도');
+        // fetchMessages 호출 대신 상태만 변경
+        setIsLoading(true);
+      }, 1000);
     }
   }, [actualUserId, transactionId, otherUserId, userRole]);
 

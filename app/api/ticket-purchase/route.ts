@@ -112,7 +112,13 @@ export async function POST(request: NextRequest) {
     console.log("API - 게시글 작성자 ID:", post.authorId.toString(), typeof post.authorId);
     console.log("API - 사용자 ID:", authUser.id.toString(), typeof authUser.id);
     
-    if (post.authorId.toString() === authUser.id.toString()) {
+    // 숫자로 변환하여 비교 (문자열 비교 대신)
+    const postAuthorId = Number(post.authorId);
+    const currentUserId = Number(authUser.id);
+    
+    console.log("API - 숫자 변환 후 비교:", { postAuthorId, currentUserId });
+    
+    if (postAuthorId === currentUserId) {
       console.log("API - 작성자와 사용자가 일치함");
       return addCorsHeaders(NextResponse.json(
         { success: false, message: "자신의 게시글은 구매할 수 없습니다." },

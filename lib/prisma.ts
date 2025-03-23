@@ -1,12 +1,16 @@
 import { PrismaClient } from '@prisma/client';
 
-// PrismaClient는 전역 변수로 선언하여 앱 실행 중 단일 인스턴스만 생성되도록 합니다.
+// PrismaClient를 글로벌 변수로 선언하여 핫 리로드 시 여러 인스턴스가 생성되는 것 방지
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
-export const prisma = globalForPrisma.prisma || new PrismaClient({
-  log: ['query', 'error', 'warn'],
-});
+// 싱글톤 패턴으로 Prisma 클라이언트 인스턴스 생성
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    log: ['query', 'error', 'warn'],
+  });
 
+// 개발 환경에서만 전역 변수에 할당
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
 export default prisma; 

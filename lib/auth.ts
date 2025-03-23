@@ -1,11 +1,10 @@
 import { compare, hash } from 'bcryptjs';
-import { sign, verify } from 'jsonwebtoken';
-import { PrismaClient } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { NextAuthOptions } from 'next-auth';
 import { JWT } from 'next-auth/jwt';
 import { getServerSession } from 'next-auth/next';
-import jwt from 'jsonwebtoken';
+import * as jsonwebtoken from 'jsonwebtoken';
+import { PrismaClient } from "@prisma/client";
 
 // 세션에 id 필드를 추가하기 위한 타입 확장
 declare module "next-auth" {
@@ -70,7 +69,7 @@ export async function comparePassword(
 
 // JWT 액세스 토큰 생성
 export function generateAccessToken(userId: number, email: string, role: string): string {
-  return sign(
+  return jsonwebtoken.sign(
     { userId, email, role },
     JWT_SECRET,
     { expiresIn: '24h' } // 24시간으로 연장
@@ -79,7 +78,7 @@ export function generateAccessToken(userId: number, email: string, role: string)
 
 // JWT 리프레시 토큰 생성
 export function generateRefreshToken(userId: number): string {
-  return sign(
+  return jsonwebtoken.sign(
     { userId },
     JWT_REFRESH_SECRET,
     { expiresIn: '30d' } // 30일로 연장
@@ -112,7 +111,7 @@ export function verifyToken(token: string | null) {
     }
 
     // 표준 JWT 토큰 검증
-    const decoded = verify(token, JWT_SECRET) as { userId: number; name?: string };
+    const decoded = jsonwebtoken.verify(token, JWT_SECRET) as { userId: number; name?: string };
     console.log("JWT 토큰 검증 성공", decoded);
     return decoded;
   } catch (error) {
@@ -141,7 +140,7 @@ export function verifyAccessToken(token: string) {
     }
     
     // 표준 JWT 토큰 검증
-    const decoded = verify(token, JWT_SECRET);
+    const decoded = jsonwebtoken.verify(token, JWT_SECRET);
     console.log("JWT 토큰 검증 성공", decoded);
     return decoded;
   } catch (error) {
@@ -153,7 +152,7 @@ export function verifyAccessToken(token: string) {
 // 리프레시 토큰 유효성 검증
 export function verifyRefreshToken(token: string) {
   try {
-    return verify(token, JWT_REFRESH_SECRET);
+    return jsonwebtoken.verify(token, JWT_REFRESH_SECRET);
   } catch (error) {
     return null;
   }
@@ -248,7 +247,7 @@ export function generateDevToken(userId: number, name: string = '개발 테스�
   
   // JWT 토큰 생성
   try {
-    const token = sign(
+    const token = jsonwebtoken.sign(
       { userId, name, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 604800 },
       JWT_SECRET
     );
