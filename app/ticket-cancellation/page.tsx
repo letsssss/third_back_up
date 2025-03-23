@@ -248,7 +248,7 @@ export default function TicketCancellationPage() {
               </Link>
               <Link
                 href="/ticket-cancellation"
-                className="text-gray-700 hover:text-[#0061FF] transition-colors border-r pr-6 whitespace-nowrap"
+                className="text-[#0061FF] transition-colors border-r pr-6 whitespace-nowrap font-medium"
               >
                 취켓팅
               </Link>
