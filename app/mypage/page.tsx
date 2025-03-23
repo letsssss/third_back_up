@@ -192,7 +192,9 @@ export default function MyPage() {
           id: post.id,
           title: post.title || post.eventName || "제목 없음",
           date: post.eventDate || new Date(post.createdAt).toLocaleDateString(),
-          price: `${post.ticketPrice?.toLocaleString() || '가격 정보 없음'}원`,
+          price: post.ticketPrice 
+            ? `${Number(post.ticketPrice).toLocaleString()}원` 
+            : '가격 정보 없음',
           status: statusText
         };
       });
@@ -270,7 +272,9 @@ export default function MyPage() {
           id: purchase.id,
           title: purchase.post?.title || purchase.post?.eventName || "제목 없음",
           date: purchase.post?.eventDate || new Date(purchase.createdAt).toLocaleDateString(),
-          price: `${purchase.totalPrice?.toLocaleString() || '가격 정보 없음'}원`,
+          price: purchase.totalPrice 
+            ? `${Number(purchase.totalPrice).toLocaleString()}원` 
+            : '가격 정보 없음',
           status: getStatusText(purchase.status),
           sellerId: purchase.sellerId
         };
@@ -695,7 +699,9 @@ export default function MyPage() {
                     <div key={item.id} className="border-b py-4 last:border-b-0">
                       <h3 className="font-medium">{item.title}</h3>
                       <p className="text-sm text-gray-600">{item.date}</p>
-                      <p className="text-sm font-semibold">{item.price}</p>
+                      <p className="text-sm font-semibold">
+                        {item.price}
+                      </p>
                       <p className="text-sm text-blue-600">{item.status}</p>
                       <Link href={`/transaction/${item.id}`}>
                         <Button className="mt-2 text-sm" variant="outline">
@@ -728,7 +734,9 @@ export default function MyPage() {
                     <div key={item.id} className="border-b py-4 last:border-b-0">
                       <h3 className="font-medium">{item.title}</h3>
                       <p className="text-sm text-gray-600">{item.date}</p>
-                      <p className="text-sm font-semibold">{item.price}</p>
+                      <p className="text-sm font-semibold">
+                        {item.price}
+                      </p>
                       <p className="text-sm text-green-600">{item.status}</p>
                       <div className="flex mt-2 space-x-2">
                         <Link href={`/seller/transaction/${item.id}`}>
