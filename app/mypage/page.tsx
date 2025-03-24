@@ -794,12 +794,28 @@ export default function MyPage() {
                             거래 상세
                           </Button>
                         </Link>
-                        <Button 
-                          onClick={() => deletePost(item.id)} 
-                          className="text-sm bg-red-500 hover:bg-red-600 text-white"
-                        >
-                          삭제
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger>
+                            <Button 
+                              className="text-sm bg-red-500 hover:bg-red-600 text-white"
+                              type="button"
+                            >
+                              삭제
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>판매 상품 삭제</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                이 상품을 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>취소</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deletePost(item.id)}>삭제</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
                   ))
