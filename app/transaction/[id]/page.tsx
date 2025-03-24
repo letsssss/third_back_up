@@ -700,15 +700,32 @@
                   {currentUserRole === 'buyer' ? '판매자에게 메시지' : '구매자에게 메시지'}
                 </Button>
 
-                {/* 구매자인 경우 구매 확정 버튼 */}
+                {/* 구매자인 경우 구매 확정 버튼 - 취켓팅 시작 상태 */}
+                {currentUserRole === 'buyer' && transaction?.currentStep === "PROCESSING" && (
+                  <div className="flex flex-col gap-2 items-end">
+                    <Button
+                      disabled={true}  
+                      className="bg-gray-400 text-white font-semibold px-6 py-3 rounded-lg shadow-md cursor-not-allowed"
+                    >
+                      구매 확정하기
+                    </Button>
+                    <p className="text-sm text-gray-500">
+                      판매자가 취켓팅 완료 버튼을 누른 후 구매 확정 버튼이 활성화됩니다.
+                    </p>
+                  </div>
+                )}
+
+                {/* 구매자인 경우 구매 확정 버튼 - 취켓팅 완료 상태 */}
                 {currentUserRole === 'buyer' && transaction?.currentStep === "COMPLETED" && (
-                  <Button
-                    onClick={handleAction}
-                    disabled={isSubmitting}
-                    className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md"
-                  >
-                    {isSubmitting ? '처리 중...' : '구매 확정하기'}
-                  </Button>
+                  <div className="flex flex-col gap-2 items-end">
+                    <Button
+                      onClick={handleAction}
+                      disabled={false}  
+                      className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md"
+                    >
+                      {isSubmitting ? '처리 중...' : '구매 확정하기'}
+                    </Button>
+                  </div>
                 )}
 
                 {/* 판매자인 경우 구매 확정 요청 버튼 추가 */}
