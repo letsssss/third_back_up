@@ -143,16 +143,16 @@ export async function GET(
           : null,
       },
       ticket: {
-        title: purchase.post.title,
-        date: purchase.post.date?.toISOString().split('T')[0] || '날짜 정보 없음',
-        time: '19:00', // 임시 데이터
-        venue: purchase.post.venue || '장소 정보 없음',
-        seat: purchase.seatInfo || 'VIP석', // 임시 데이터
-        image: purchase.post.images && purchase.post.images.length > 0 
+        title: purchase.ticketTitle || (purchase.post?.title || ''),
+        date: purchase.eventDate || (purchase.post?.eventDate ? new Date(purchase.post.eventDate).toISOString().split('T')[0] : ''),
+        time: '', // 빈 문자열로 설정 (UI에서 조건부 렌더링)
+        venue: purchase.eventVenue || (purchase.post?.eventVenue || ''),
+        seat: purchase.selectedSeats || '',
+        image: purchase.imageUrl || (purchase.post?.images && purchase.post.images.length > 0 
           ? purchase.post.images[0] 
-          : '/placeholder.svg',
+          : '/placeholder.svg')
       },
-      price: purchase.post.price,
+      price: Number(purchase.totalPrice) || 0,
       paymentMethod: '신용카드', // 임시 데이터
       paymentStatus: '결제 완료',
       ticketingStatus: getTicketingStatusText(purchase.status),
