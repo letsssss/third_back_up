@@ -127,7 +127,7 @@
       }
     };
 
-    // 페이지 로드 시 거래 정보 가져오기
+    // 페이지 로드 시 거래 정보 가져오기 및 상태 자동 변경
     useEffect(() => {
       const fetchTransactionData = async () => {
         try {
@@ -385,7 +385,7 @@
       }
     };
 
-    // 거래 단계 정의
+    // 거래 단계 정의 - 결제 완료부터 구매 확정까지의 모든 단계 표시
     const transactionSteps = [
       {
         id: "PENDING",
@@ -451,6 +451,59 @@
         router.push(`/review/${transaction.id}?role=${currentUserRole}`)
       }
     }
+
+    // 구매 확정 요청 함수 - 알림만 보내고 상태는 변경하지 않음
+    const handleConfirmationRequest = async () => {
+      if (!transaction || !params?.id || isSubmitting) return;
+      
+      try {
+        setIsSubmitting(true);
+        console.log(`구매 확정 요청 알림 전송: 거래 ID: ${params.id}`);
+        
+        // API 호출 (알림만 보냄)
+        const response = await fetch(`/api/purchase/${params.id}/confirmation-request`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache'
+          }
+        });
+        
+        console.log('구매 확정 요청 API 응답 상태:', response.status, response.statusText);
+        
+        if (!response.ok) {
+          let errorMessage = '구매 확정 요청 알림 전송에 실패했습니다';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorMessage;
+          } catch (e) {
+            console.error('오류 응답을 JSON으로 파싱할 수 없음:', e);
+          }
+          
+          console.error('구매 확정 요청 API 오류:', response.status, errorMessage);
+          throw new Error(`API 오류 (${response.status}): ${errorMessage}`);
+        }
+        
+        const data = await response.json();
+        console.log('구매 확정 요청 알림 전송 성공:', data);
+        
+        // 성공 메시지 표시
+        toast({
+          title: '구매 확정 요청 완료',
+          description: data.message || '구매자에게 구매 확정 요청 알림이 전송되었습니다.',
+        });
+        
+      } catch (error) {
+        console.error('구매 확정 요청 오류:', error);
+        toast({
+          title: '구매 확정 요청 실패',
+          description: error instanceof Error ? error.message : '구매 확정 요청 중 오류가 발생했습니다.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
 
     const openChat = () => setIsChatOpen(true)
     const closeChat = () => setIsChatOpen(false)
@@ -658,40 +711,26 @@
                   </Button>
                 )}
 
-                {/* 판매자인 경우 구매 확정 버튼 추가 */}
+                {/* 판매자인 경우 구매 확정 요청 버튼 추가 */}
                 {currentUserRole === 'seller' && transaction?.currentStep === "COMPLETED" && (
                   <Button
-                    onClick={() => handleStatusChange('CONFIRMED')}
+                    onClick={handleConfirmationRequest}
                     disabled={isSubmitting}
                     className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md"
                   >
-                    {isSubmitting ? '처리 중...' : '구매 확정하기'}
+                    {isSubmitting ? '처리 중...' : '구매 확정 요청하기'}
                   </Button>
                 )}
 
-                {/* 판매자인 경우 상태 변경 버튼 */}
-                {currentUserRole === 'seller' && (
-                  <>
-                    {transaction?.currentStep === "PENDING" && (
-                      <Button
-                        onClick={() => handleStatusChange('PROCESSING')}
-                        disabled={isSubmitting}
-                        className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md"
-                      >
-                        {isSubmitting ? '처리 중...' : '취켓팅 시작하기'}
-                      </Button>
-                    )}
-                    
-                    {transaction?.currentStep === "PROCESSING" && (
-                      <Button
-                        onClick={() => handleStatusChange('COMPLETED')}
-                        disabled={isSubmitting}
-                        className="bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md"
-                      >
-                        {isSubmitting ? '처리 중...' : '취켓팅 완료하기'}
-                      </Button>
-                    )}
-                  </>
+                {/* 판매자인 경우 상태 변경 버튼 - 취켓팅 시작 버튼 제거하고 바로 완료하기 버튼 표시 */}
+                {currentUserRole === 'seller' && transaction?.currentStep === "PROCESSING" && (
+                  <Button
+                    onClick={() => handleStatusChange('COMPLETED')}
+                    disabled={isSubmitting}
+                    className="bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md"
+                  >
+                    {isSubmitting ? '처리 중...' : '취켓팅 완료하기'}
+                  </Button>
                 )}
 
                 {transaction?.currentStep === "CONFIRMED" && (

@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     // 총 가격 계산
     const totalPrice = post.ticketPrice ? post.ticketPrice * BigInt(quantity) : BigInt(0);
 
-    // 구매 정보 생성
+    // 구매 정보 생성 - 바로 PROCESSING 상태로 시작
     const purchase = await prisma.purchase.create({
       data: {
         buyerId: authUser.id,
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
         postId: post.id,
         quantity,
         totalPrice,
-        status: "PENDING",
+        status: "PROCESSING", // PENDING 대신 바로 PROCESSING으로 시작
         selectedSeats,
         phoneNumber,
         paymentMethod,
@@ -160,59 +160,45 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    // 게시물 상태 업데이트 - 판매중(ACTIVE)에서 취켓팅 진행중(PROCESSING)으로 변경
+    await prisma.post.update({
+      where: { id: postId },
+      data: { status: "PROCESSING" }
+    });
+    
+    console.log(`게시글 ID ${postId}의 상태가 'PROCESSING'으로 업데이트되었습니다.`);
+
     // 판매자에게 알림 생성
     console.log('판매자 알림 생성 시도:', {
       userId: post.authorId,
       postId: post.id,
-      message: `${authUser.name || '구매자'}님이 "${post.title || post.eventName || '게시글'}"에 대한 취켓팅을 신청했습니다. (${quantity}매, ${totalPrice.toString()}원)`,
+      message: `${authUser.name || '구매자'}님이 "${post.title || post.eventName || '게시글'}"의 결제를 완료하여 취켓팅이 시작되었습니다. (${quantity}매, ${totalPrice.toString()}원)`,
       type: "TICKET_REQUEST"
     });
-    
-    const sellerNotification = await prisma.notification.create({
+
+    // 알림 생성
+    await prisma.notification.create({
       data: {
         userId: post.authorId,
         postId: post.id,
-        message: `${authUser.name || '구매자'}님이 "${post.title || post.eventName || '게시글'}"에 대한 취켓팅을 신청했습니다. (${quantity}매, ${totalPrice.toString()}원)`,
-        type: "TICKET_REQUEST",
+        message: `${authUser.name || '구매자'}님이 "${post.title || post.eventName || '게시글'}"의 결제를 완료하여 취켓팅이 시작되었습니다. (${quantity}매, ${totalPrice.toString()}원)`,
+        type: "TICKET_REQUEST"
       }
     });
-    console.log('판매자 알림 생성 완료:', sellerNotification);
 
-    // 구매자에게도 알림 생성
-    console.log('구매자 알림 생성 시도:', {
-      userId: authUser.id,
-      postId: post.id,
-      message: `"${post.title || post.eventName || '게시글'}" 티켓 구매 신청이 완료되었습니다. 판매자의 확인을 기다려주세요.`,
-      type: "PURCHASE_COMPLETE"
-    });
-    
-    const buyerNotification = await prisma.notification.create({
-      data: {
-        userId: authUser.id,
-        postId: post.id,
-        message: `"${post.title || post.eventName || '게시글'}" 티켓 구매 신청이 완료되었습니다. 판매자의 확인을 기다려주세요.`,
-        type: "PURCHASE_COMPLETE",
+    // 구매 정보 응답
+    return addCorsHeaders(NextResponse.json({
+      success: true,
+      message: "구매 신청이 성공적으로 처리되었습니다.",
+      purchase: {
+        ...convertBigIntToString(purchase),
+        post: post
       }
-    });
-    console.log('구매자 알림 생성 완료:', buyerNotification);
-
-    console.log("구매 신청 및 알림 생성 완료 - 구매 ID:", purchase.id);
-
-    // BigInt 값을 문자열로 변환
-    const serializedPurchase = convertBigIntToString(purchase);
-
-    return addCorsHeaders(NextResponse.json(
-      { 
-        success: true, 
-        message: "티켓 구매 신청이 완료되었습니다. 판매자의 확인을 기다려주세요.", 
-        purchase: serializedPurchase
-      },
-      { status: 201 }
-    ));
+    }, { status: 201 }));
   } catch (error) {
-    console.error("티켓 구매 오류:", error);
+    console.error("구매 처리 오류:", error);
     return addCorsHeaders(NextResponse.json(
-      { success: false, message: "티켓 구매 중 오류가 발생했습니다." },
+      { success: false, message: "구매 처리 중 오류가 발생했습니다." },
       { status: 500 }
     ));
   } finally {
