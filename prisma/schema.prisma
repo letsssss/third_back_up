@@ -65,17 +65,22 @@ model Purchase {
   id            Int       @id @default(autoincrement())
   buyerId       Int
   sellerId      Int
-  postId        Int
+  postId        Int?
   quantity      Int       @default(1)
   totalPrice    BigInt
   status        String    @default("PENDING")
   paymentMethod String?
   selectedSeats String?
   phoneNumber   String?
+  ticketTitle   String?
+  eventDate     String?
+  eventVenue    String?
+  ticketPrice   BigInt?
+  imageUrl      String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   messages      Message[]
-  post          Post      @relation(fields: [postId], references: [id])
+  post          Post?     @relation(fields: [postId], references: [id])
   seller        User      @relation("Seller", fields: [sellerId], references: [id])
   buyer         User      @relation("Buyer", fields: [buyerId], references: [id])
   room          Room?

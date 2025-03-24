@@ -141,8 +141,31 @@ export async function GET(
         ));
       }
       
+      // 응답 데이터를 가공하여 post 필드가 없더라도 필요한 정보가 포함되도록 함
+      const enhancedResponse = (purchase: any) => {
+        const serializedPurchase = convertBigIntToString(purchase);
+        
+        // post 필드가 없는 경우 Purchase 모델의 필드로 보완
+        if (!serializedPurchase.post) {
+          // ticketTitle 등의 필드가 Purchase에 저장되어 있으면 이를 사용하여 post 객체 생성
+          if (serializedPurchase.ticketTitle || serializedPurchase.eventDate || serializedPurchase.eventVenue || serializedPurchase.ticketPrice) {
+            serializedPurchase.post = {
+              title: serializedPurchase.ticketTitle || '제목 없음',
+              eventDate: serializedPurchase.eventDate || null,
+              eventVenue: serializedPurchase.eventVenue || null,
+              ticketPrice: serializedPurchase.ticketPrice || null,
+              author: serializedPurchase.seller || null
+            };
+            
+            console.log('Purchase 필드로부터 post 정보 생성:', serializedPurchase.post);
+          }
+        }
+        
+        return serializedPurchase;
+      };
+
       // BigInt 값을 문자열로 변환
-      const serializedPurchase = convertBigIntToString(purchase);
+      const serializedPurchase = enhancedResponse(purchase);
       
       // 성공 응답 반환
       return addCorsHeaders(NextResponse.json({

@@ -166,146 +166,184 @@ export default function TransactionDetail() {
         
         // 거래 정보 가져오기 (오류 처리 개선)
         console.log(`API 요청 시작: /api/purchase/${id}`);
-        const response = await fetch(`/api/purchase/${id}`, {
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        });
-        
-        console.log('API 응답 상태:', response.status, response.statusText);
-        
-        // 응답이 성공적이지 않은 경우
-        if (!response.ok) {
-          let errorMessage = '거래 정보를 가져오는데 실패했습니다';
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.message || errorMessage;
-          } catch (e) {
-            console.error('오류 응답을 JSON으로 파싱할 수 없음:', e);
+        try {
+          const response = await fetch(`/api/purchase/${id}`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          });
+          
+          console.log('API 응답 상태:', response.status, response.statusText);
+          
+          // 응답 내용 미리 확인 (텍스트로)
+          const responseText = await response.text();
+          
+          if (responseText.trim().length === 0) {
+            throw new Error('API에서 빈 응답을 반환했습니다.');
           }
           
-          console.error('API 응답 오류:', response.status, errorMessage);
-          throw new Error(`API 오류 (${response.status}): ${errorMessage}`);
-        }
-        
-        // 응답 데이터 파싱
-        const purchaseData = await response.json();
-        console.log('API에서 가져온 구매 데이터:', purchaseData);
-        
-        // 응답이 성공적이지 않은 경우
-        if (!purchaseData.success) {
-          throw new Error(purchaseData.message || '거래 정보를 가져오는데 실패했습니다');
-        }
-        
-        if (!purchaseData.purchase) {
-          throw new Error('구매 데이터가 없습니다');
-        }
-        
-        // localStorage에서 사용자 ID 가져오기
-        // 세션스토리지 또는 로컬스토리지에서 사용자 정보 가져오기
-        let userId = ""; // 기본값은 빈 문자열
-        
-        // 클라이언트 사이드에서만 실행
-        if (typeof window !== 'undefined') {
-          try {
-            // 우선 user 객체에서 시도
-            const userStr = localStorage.getItem('user');
-            if (userStr) {
-              const user = JSON.parse(userStr);
-              if (user && user.id) {
-                userId = user.id.toString();
-                console.log('로컬스토리지에서 user 객체로부터 ID 찾음:', userId);
+          // 응답 미리보기 로그
+          console.log('응답 본문 미리보기:', responseText.substring(0, 150) + '...');
+          
+          // 응답이 성공적이지 않은 경우
+          if (!response.ok) {
+            let errorMessage = '거래 정보를 가져오는데 실패했습니다';
+            // HTML 응답인지 확인
+            if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+              console.error('API가 HTML을 반환했습니다. 서버 오류가 발생했을 수 있습니다.');
+              errorMessage = 'API 서버 오류: HTML 응답을 받았습니다.';
+              throw new Error(`API 오류 (${response.status}): ${errorMessage}`);
+            } else {
+              try {
+                // JSON으로 파싱 시도
+                const errorData = JSON.parse(responseText);
+                errorMessage = errorData.message || errorMessage;
+              } catch (e) {
+                console.error('응답을 JSON으로 파싱할 수 없음:', e);
               }
             }
             
-            // user 객체에서 ID를 찾지 못한 경우 userId 직접 시도
-            if (!userId) {
-              const directUserId = localStorage.getItem('userId');
-              if (directUserId) {
-                userId = directUserId;
-                console.log('로컬스토리지에서 userId로부터 ID 찾음:', userId);
-              }
-            }
-            
-            // 테스트용 ID 할당 (개발 환경에서만)
-            if (!userId) {
-              userId = "2"; // 임시로 2 설정
-              console.log('테스트를 위한 임시 ID 사용:', userId);
-            }
-          } catch (error) {
-            console.error('로컬스토리지에서 사용자 ID 가져오기 실패:', error);
-            userId = "2"; // 오류 시 기본값
+            console.error('API 응답 오류:', response.status, errorMessage);
+            throw new Error(`API 오류 (${response.status}): ${errorMessage}`);
           }
-        }
-        
-        console.log('최종 사용되는 현재 사용자 ID:', userId);
-        setCurrentUserId(userId);
-        
-        // 구매자인지 판매자인지 결정
-        const userRole = userId === purchaseData.purchase?.sellerId?.toString() 
-          ? 'seller' 
-          : 'buyer';
-        setCurrentUserRole(userRole);
-        console.log('사용자 역할:', userRole);
-        
-        // 구매 데이터를 TransactionData 형식으로 변환
-        const formattedTransaction: TransactionData = {
-          id: purchaseData.purchase?.id?.toString() || "",
-          type: "purchase",
-          status: getStatusText(purchaseData.purchase?.status || ""),
-          currentStep: purchaseData.purchase?.status || "",
-          stepDates: {
-            payment: purchaseData.purchase?.createdAt || "",
-            ticketing_started: purchaseData.purchase?.status === 'PROCESSING' || purchaseData.purchase?.status === 'COMPLETED' || purchaseData.purchase?.status === 'CONFIRMED' 
-              ? purchaseData.purchase?.updatedAt || ""
-              : null,
-            ticketing_completed: purchaseData.purchase?.status === 'COMPLETED' || purchaseData.purchase?.status === 'CONFIRMED' 
-              ? purchaseData.purchase?.updatedAt || ""
-              : null,
-            confirmed: purchaseData.purchase?.status === 'CONFIRMED' 
-              ? purchaseData.purchase?.updatedAt || ""
-              : null,
-          },
-          ticket: {
-            title: purchaseData.purchase?.post?.title || '티켓 정보 없음',
-            date: purchaseData.purchase?.post?.eventDate || '날짜 정보 없음',
-            time: "19:00", // 시간 정보가 없는 경우 기본값
-            venue: purchaseData.purchase?.post?.eventVenue || "공연장",
-            seat: purchaseData.purchase?.selectedSeats || "좌석 정보 없음",
-            image: "/placeholder.svg", // 이미지 정보가 없을 경우 기본값
-          },
-          price: Number(purchaseData.purchase?.post?.ticketPrice) || 0,
-          paymentMethod: "신용카드", // 결제 방식 정보 없을 경우 기본값
-          paymentStatus: "결제 완료",
-          ticketingStatus: getTicketingStatusText(purchaseData.purchase?.status || ""),
-          ticketingInfo: "취소표 발생 시 알림을 보내드립니다. 취소표 발생 시 빠르게 예매를 진행해 드립니다.",
-          seller: {
-            id: purchaseData.purchase?.seller?.id?.toString() || "",
-            name: purchaseData.purchase?.seller?.name || "판매자",
-            profileImage: purchaseData.purchase?.seller?.profileImage || "/placeholder.svg?height=50&width=50",
-          },
-          buyer: {
-            id: purchaseData.purchase?.buyer?.id?.toString() || "",
-            name: purchaseData.purchase?.buyer?.name || "구매자",
-            profileImage: purchaseData.purchase?.buyer?.profileImage || "/placeholder.svg?height=50&width=50",
-          },
-        };
-        
-        console.log('변환된 트랜잭션 데이터:', formattedTransaction);
-        setTransaction(formattedTransaction);
-        
-        // ✅ 구매자와 판매자 ID가 모두 존재할 때만 채팅 준비
-        if (purchaseData.purchase.buyer?.id && purchaseData.purchase.seller?.id) {
-          setChatProps({
-            transactionId: id,
-            userId,
-            userRole,
-            otherUserId: userRole === 'buyer' 
-              ? purchaseData.purchase.seller.id.toString() 
-              : purchaseData.purchase.buyer.id.toString()
+          
+          // 응답 데이터 파싱
+          let purchaseData;
+          try {
+            purchaseData = JSON.parse(responseText);
+          } catch (e) {
+            console.error('JSON 파싱 오류:', e);
+            throw new Error('API 응답이 유효한 JSON 형식이 아닙니다.');
+          }
+          
+          console.log('API에서 가져온 구매 데이터:', purchaseData);
+          
+          // 응답이 성공적이지 않은 경우
+          if (!purchaseData.success) {
+            throw new Error(purchaseData.message || '거래 정보를 가져오는데 실패했습니다');
+          }
+          
+          if (!purchaseData.purchase) {
+            throw new Error('구매 데이터가 없습니다');
+          }
+          
+          // localStorage에서 사용자 ID 가져오기
+          // 세션스토리지 또는 로컬스토리지에서 사용자 정보 가져오기
+          let userId = ""; // 기본값은 빈 문자열
+          
+          // 클라이언트 사이드에서만 실행
+          if (typeof window !== 'undefined') {
+            try {
+              // 우선 user 객체에서 시도
+              const userStr = localStorage.getItem('user');
+              if (userStr) {
+                const user = JSON.parse(userStr);
+                if (user && user.id) {
+                  userId = user.id.toString();
+                  console.log('로컬스토리지에서 user 객체로부터 ID 찾음:', userId);
+                }
+              }
+              
+              // user 객체에서 ID를 찾지 못한 경우 userId 직접 시도
+              if (!userId) {
+                const directUserId = localStorage.getItem('userId');
+                if (directUserId) {
+                  userId = directUserId;
+                  console.log('로컬스토리지에서 userId로부터 ID 찾음:', userId);
+                }
+              }
+              
+              // 테스트용 ID 할당 (개발 환경에서만)
+              if (!userId) {
+                userId = "2"; // 임시로 2 설정
+                console.log('테스트를 위한 임시 ID 사용:', userId);
+              }
+            } catch (error) {
+              console.error('로컬스토리지에서 사용자 ID 가져오기 실패:', error);
+              userId = "2"; // 오류 시 기본값
+            }
+          }
+          
+          console.log('최종 사용되는 현재 사용자 ID:', userId);
+          setCurrentUserId(userId);
+          
+          // 구매자인지 판매자인지 결정
+          const userRole = userId === purchaseData.purchase?.sellerId?.toString() 
+            ? 'seller' 
+            : 'buyer';
+          setCurrentUserRole(userRole);
+          console.log('사용자 역할:', userRole);
+          
+          // 구매 데이터를 TransactionData 형식으로 변환
+          const formattedTransaction: TransactionData = {
+            id: purchaseData.purchase?.id?.toString() || "",
+            type: "purchase",
+            status: getStatusText(purchaseData.purchase?.status || ""),
+            currentStep: purchaseData.purchase?.status || "",
+            stepDates: {
+              payment: purchaseData.purchase?.createdAt || "",
+              ticketing_started: purchaseData.purchase?.status === 'PROCESSING' || purchaseData.purchase?.status === 'COMPLETED' || purchaseData.purchase?.status === 'CONFIRMED' 
+                ? purchaseData.purchase?.updatedAt || ""
+                : null,
+              ticketing_completed: purchaseData.purchase?.status === 'COMPLETED' || purchaseData.purchase?.status === 'CONFIRMED' 
+                ? purchaseData.purchase?.updatedAt || ""
+                : null,
+              confirmed: purchaseData.purchase?.status === 'CONFIRMED' 
+                ? purchaseData.purchase?.updatedAt || ""
+                : null,
+            },
+            ticket: {
+              title: purchaseData.purchase?.ticketTitle || purchaseData.purchase?.post?.title || '티켓 정보 없음',
+              date: purchaseData.purchase?.eventDate || purchaseData.purchase?.post?.eventDate || '날짜 정보 없음',
+              time: "19:00", // 시간 정보가 없는 경우 기본값
+              venue: purchaseData.purchase?.eventVenue || purchaseData.purchase?.post?.eventVenue || "공연장",
+              seat: purchaseData.purchase?.selectedSeats || "좌석 정보 없음",
+              image: purchaseData.purchase?.imageUrl || "/placeholder.svg", // 이미지 정보가 없을 경우 기본값
+            },
+            price: Number(purchaseData.purchase?.ticketPrice || purchaseData.purchase?.post?.ticketPrice) || 0,
+            paymentMethod: purchaseData.purchase?.paymentMethod || "신용카드", // 결제 방식 정보 없을 경우 기본값
+            paymentStatus: "결제 완료",
+            ticketingStatus: getTicketingStatusText(purchaseData.purchase?.status || ""),
+            ticketingInfo: "취소표 발생 시 알림을 보내드립니다. 취소표 발생 시 빠르게 예매를 진행해 드립니다.",
+            seller: {
+              id: purchaseData.purchase?.seller?.id?.toString() || "",
+              name: purchaseData.purchase?.seller?.name || "판매자",
+              profileImage: purchaseData.purchase?.seller?.profileImage || "/placeholder.svg?height=50&width=50",
+            },
+            buyer: {
+              id: purchaseData.purchase?.buyer?.id?.toString() || "",
+              name: purchaseData.purchase?.buyer?.name || "구매자",
+              profileImage: purchaseData.purchase?.buyer?.profileImage || "/placeholder.svg?height=50&width=50",
+            },
+          };
+          
+          console.log('변환된 트랜잭션 데이터:', formattedTransaction);
+          setTransaction(formattedTransaction);
+          
+          // ✅ 구매자와 판매자 ID가 모두 존재할 때만 채팅 준비
+          if (purchaseData.purchase.buyer?.id && purchaseData.purchase.seller?.id) {
+            setChatProps({
+              transactionId: id,
+              userId,
+              userRole,
+              otherUserId: userRole === 'buyer' 
+                ? purchaseData.purchase.seller.id.toString() 
+                : purchaseData.purchase.buyer.id.toString()
+            });
+            setChatReady(true);
+          }
+        } catch (error) {
+          console.error('거래 정보 로딩 오류:', error);
+          toast({
+            title: '거래 정보 로딩 실패',
+            description: '거래 정보를 가져오는데 문제가 발생했습니다. 새로고침을 시도해주세요.',
+            variant: 'destructive',
           });
-          setChatReady(true);
+        } finally {
+          setIsLoading(false);
         }
       } catch (error) {
         console.error('거래 정보 로딩 오류:', error);
@@ -314,8 +352,6 @@ export default function TransactionDetail() {
           description: '거래 정보를 가져오는데 문제가 발생했습니다. 새로고침을 시도해주세요.',
           variant: 'destructive',
         });
-      } finally {
-        setIsLoading(false);
       }
     };
     

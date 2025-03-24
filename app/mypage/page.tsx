@@ -301,9 +301,9 @@ export default function MyPage() {
         if (status === 'PENDING') {
           newPurchaseStatus.취켓팅진행중 += 1;
         } else if (status === 'PROCESSING') {
-          newPurchaseStatus.취켓팅완료 += 1;
+          newPurchaseStatus.취켓팅진행중 += 1; // 'PROCESSING'은 취켓팅진행중으로 카운트
         } else if (status === 'COMPLETED') {
-          newPurchaseStatus.거래완료 += 1;
+          newPurchaseStatus.취켓팅완료 += 1; // 'COMPLETED'가 취켓팅완료로 카운트
         } else if (status === 'CONFIRMED') {
           // 구매 확정된 경우도 거래완료로 카운트
           newPurchaseStatus.거래완료 += 1;
@@ -313,8 +313,8 @@ export default function MyPage() {
         
         return {
           id: purchase.id,
-          title: purchase.post?.title || purchase.post?.eventName || "제목 없음",
-          date: purchase.post?.eventDate || new Date(purchase.createdAt).toLocaleDateString(),
+          title: purchase.ticketTitle || purchase.post?.title || purchase.post?.eventName || "제목 없음",
+          date: purchase.eventDate || purchase.post?.eventDate || new Date(purchase.createdAt).toLocaleDateString(),
           price: purchase.totalPrice 
             ? `${Number(purchase.totalPrice).toLocaleString()}원` 
             : '가격 정보 없음',

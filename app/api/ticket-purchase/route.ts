@@ -77,12 +77,23 @@ export async function POST(request: NextRequest) {
     console.log("인증된 사용자 정보:", authUser);
 
     // 요청 본문 파싱
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+      console.log("요청 본문:", body);
+    } catch (error) {
+      console.error("요청 본문 파싱 오류:", error);
+      return addCorsHeaders(NextResponse.json(
+        { success: false, message: "잘못된 요청 형식입니다." },
+        { status: 400 }
+      ));
+    }
     
     // 입력 데이터 유효성 검사
     const validationResult = purchaseSchema.safeParse(body);
     
     if (!validationResult.success) {
+      console.error("입력 데이터 유효성 검사 실패:", validationResult.error.errors);
       return addCorsHeaders(NextResponse.json(
         { 
           success: false, 
@@ -94,6 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { postId, quantity, selectedSeats, phoneNumber, paymentMethod } = validationResult.data;
+    console.log("유효성 검사 통과 후 데이터:", { postId, quantity, selectedSeats, phoneNumber, paymentMethod });
 
     // 게시글 조회
     const post = await prisma.post.findUnique({
@@ -102,17 +114,18 @@ export async function POST(request: NextRequest) {
     });
 
     if (!post) {
+      console.log(`게시글 ID ${postId}를 찾을 수 없음`);
       return addCorsHeaders(NextResponse.json(
         { success: false, message: "해당하는 게시글을 찾을 수 없습니다." },
         { status: 404 }
       ));
     }
 
-    // 자신의 게시글인지 확인 - 문자열로 변환하여 비교
+    // 자신의 게시글인지 확인
     console.log("API - 게시글 작성자 ID:", post.authorId.toString(), typeof post.authorId);
     console.log("API - 사용자 ID:", authUser.id.toString(), typeof authUser.id);
     
-    // 숫자로 변환하여 비교 (문자열 비교 대신)
+    // 숫자로 변환하여 비교
     const postAuthorId = Number(post.authorId);
     const currentUserId = Number(authUser.id);
     
@@ -125,6 +138,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       ));
     }
+    
     console.log("API - 작성자와 사용자가 다름");
 
     if (post.status !== "ACTIVE") {
@@ -149,6 +163,11 @@ export async function POST(request: NextRequest) {
         selectedSeats,
         phoneNumber,
         paymentMethod,
+        // Post 정보도 함께 저장
+        ticketTitle: post.title,
+        eventDate: post.eventDate,
+        eventVenue: post.eventVenue,
+        ticketPrice: post.ticketPrice,
       },
       include: {
         post: {
@@ -160,7 +179,7 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // 게시물 상태 업데이트 - 판매중(ACTIVE)에서 취켓팅 진행중(PROCESSING)으로 변경
+    // 게시물 상태 업데이트
     await prisma.post.update({
       where: { id: postId },
       data: { status: "PROCESSING" }
@@ -195,10 +214,23 @@ export async function POST(request: NextRequest) {
         post: post
       }
     }, { status: 201 }));
+    
   } catch (error) {
     console.error("구매 처리 오류:", error);
+    let errorMessage = "구매 처리 중 오류가 발생했습니다.";
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      console.error("오류 스택:", error.stack);
+    }
+    
     return addCorsHeaders(NextResponse.json(
-      { success: false, message: "구매 처리 중 오류가 발생했습니다." },
+      { 
+        success: false, 
+        message: errorMessage,
+        // 개발 환경에서만 상세 오류 정보 포함
+        error: process.env.NODE_ENV === 'development' ? String(error) : undefined 
+      },
       { status: 500 }
     ));
   } finally {

@@ -61,4 +61,35 @@
 
 - 실제 배포 환경에서는 JWT 시크릿 키를 강력한 무작위 문자열로 변경하세요.
 - 프로덕션 환경에서는 HTTPS를 사용하세요.
-- 민감한 정보는 항상 암호화하여 저장하세요. 
+- 민감한 정보는 항상 암호화하여 저장하세요.
+
+## 데이터 모델 리팩토링: Post와 Purchase 분리
+
+### 목적
+- 게시글(Post)이 삭제되어도 구매자와 판매자의 거래 정보(Purchase)는 유지되어야 함
+- 채팅, 상세조회 등 모든 기능이 postId에 의존하지 않도록 Purchase 모델만으로도 작동하도록 함
+
+### 변경 사항
+
+1. **Prisma 스키마 변경**
+   - Purchase 모델의 postId를 nullable로 변경
+   - Post의 주요 정보를 Purchase 모델에 중복 저장
+     - `ticketTitle`: 티켓 제목 (post.title)
+     - `eventDate`: 이벤트 날짜 (post.eventDate)
+     - `eventVenue`: 이벤트 장소 (post.eventVenue)
+     - `ticketPrice`: 티켓 가격 (post.ticketPrice)
+     - `imageUrl`: 이미지 URL (post.imageUrl)
+
+2. **API 변경**
+   - 구매 목록 API에서 Purchase 필드 우선 사용
+   - 티켓 구매 API에서 Post 정보를 Purchase에 복제 저장
+   - 구매 상세 정보 API에서 post 필드가 없을 때도 작동하도록 수정
+
+3. **UI 변경**
+   - 거래 상세 페이지에서 post 필드 대신 Purchase 필드 우선 사용
+   - 마이페이지 구매 목록에서 post 필드 대신 Purchase 필드 우선 사용
+
+### 이점
+- 데이터 일관성 향상: 게시글 삭제 후에도 거래 정보 유지
+- 쿼리 성능 향상: 중첩된 조인 감소
+- 의존성 감소: Post 모델에 의존하지 않고 독립적으로 작동 
