@@ -326,9 +326,15 @@ export default function MyPage() {
       // 상태 업데이트
       setPurchaseStatus(newPurchaseStatus);
       
+      // CONFIRMED(구매 확정) 상태의 구매는 '구매중'이 아니므로 필터링
+      const ongoingPurchasesData = purchasesData.filter((purchase: any) => 
+        !purchase.status.includes('구매 확정됨')
+      );
+      
       console.log("변환된 구매 데이터:", purchasesData);
+      console.log("구매중인 상품 데이터:", ongoingPurchasesData);
       console.log("상태별 카운트:", newPurchaseStatus);
-      setOngoingPurchases(purchasesData);
+      setOngoingPurchases(ongoingPurchasesData);
     } catch (error) {
       console.error('구매 목록 로딩 오류:', error);
       toast.error('구매 목록을 불러오는데 실패했습니다.');
@@ -689,7 +695,7 @@ export default function MyPage() {
               onClick={() => setActiveTab("ongoing-purchases")}
             >
               <ShoppingBag className="inline-block mr-2" />
-              구매중인 상품
+              진행중인 구매
             </button>
             <button
               className={`flex-1 py-4 px-6 text-center ${activeTab === "ongoing-sales" ? "bg-gray-100 font-semibold" : ""}`}
@@ -725,7 +731,7 @@ export default function MyPage() {
 
             {activeTab === "ongoing-purchases" && (
               <div>
-                <h2 className="text-xl font-semibold mb-4">구매중인 상품</h2>
+                <h2 className="text-xl font-semibold mb-4">진행중인 구매</h2>
                 {isLoadingPurchases ? (
                   <div className="text-center py-8"><Loader size={30} /></div>
                 ) : ongoingPurchases.length === 0 ? (
