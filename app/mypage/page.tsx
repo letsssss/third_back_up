@@ -151,6 +151,30 @@ export default function MyPage() {
         거래완료: 0,
         거래취소: 0,
       };
+      
+      // 판매자의 판매 상품에 대한 구매 정보도 함께 가져옵니다
+      // 구매 확정(CONFIRMED) 상태 확인을 위해 추가 API 호출
+      const purchaseResponse = await fetch('/api/seller-purchases', {
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      
+      let purchasesByPostId: Record<number, any> = {};
+      
+      if (purchaseResponse.ok) {
+        const purchaseData = await purchaseResponse.json();
+        if (purchaseData.purchases && Array.isArray(purchaseData.purchases)) {
+          // 게시글 ID별로 구매 정보를 인덱싱
+          purchasesByPostId = purchaseData.purchases.reduce((acc: Record<number, any>, purchase: any) => {
+            if (purchase.postId) {
+              acc[purchase.postId] = purchase;
+            }
+            return acc;
+          }, {});
+        }
+      }
         
       // API 응답을 화면에 표시할 형식으로 변환
       const salesData = data.posts.map((post: any) => {
@@ -158,30 +182,46 @@ export default function MyPage() {
         const postStatus = post.status || '';
         const category = post.category || '';
         
+        // 관련된 구매 확인
+        const relatedPurchase = purchasesByPostId[post.id];
+        const purchaseStatus = relatedPurchase?.status || '';
+        
         // 상태에 따른 텍스트 표시
         let statusText = "판매중";
-        if (postStatus === 'PENDING' || postStatus === 'PENDING_PAYMENT') {
+        
+        // 구매 상태가 CONFIRMED인 경우 거래완료로 표시
+        if (purchaseStatus === 'CONFIRMED') {
+          statusText = "거래완료";
+        } else if (postStatus === 'PENDING' || postStatus === 'PENDING_PAYMENT') {
           statusText = "취켓팅 진행중";
         } else if (postStatus === 'PROCESSING') {
-          statusText = "취켓팅 완료";
+          statusText = "취켓팅 진행중";
         } else if (postStatus === 'COMPLETED') {
+          statusText = "취켓팅 완료";
+        } else if (postStatus === 'CONFIRMED') {
           statusText = "거래완료";
         } else if (postStatus === 'CANCELLED') {
           statusText = "거래취소";
         }
         
         // 상태에 따른 카운트 로직
-        if (postStatus === 'ACTIVE') {
+        if (purchaseStatus === 'CONFIRMED') {
+          // 구매 확정된 경우 거래완료로 카운트
+          newSaleStatus.거래완료 += 1;
+        } else if (postStatus === 'ACTIVE') {
           // 글이 활성 상태(판매중)이면 '판매중인상품'으로 카운트
           newSaleStatus.판매중인상품 += 1;
         } else if (postStatus === 'PENDING' || postStatus === 'PENDING_PAYMENT') {
           // 누군가 구매 신청을 했거나 결제 대기 중이면 '취켓팅진행중'으로 카운트
           newSaleStatus.취켓팅진행중 += 1;
         } else if (postStatus === 'PROCESSING') {
-          // 처리 중인 경우 '취켓팅완료'로 카운트
-          newSaleStatus.취켓팅완료 += 1;
+          // 처리 중인 경우 '취켓팅진행중'으로 카운트
+          newSaleStatus.취켓팅진행중 += 1;
         } else if (postStatus === 'COMPLETED') {
-          // 거래가 완료된 경우
+          // 취켓팅 완료된 경우
+          newSaleStatus.취켓팅완료 += 1;
+        } else if (postStatus === 'CONFIRMED') {
+          // 구매 확정된 경우도 거래완료로 카운트
           newSaleStatus.거래완료 += 1;
         } else if (postStatus === 'CANCELLED') {
           // 거래가 취소된 경우
@@ -264,6 +304,9 @@ export default function MyPage() {
           newPurchaseStatus.취켓팅완료 += 1;
         } else if (status === 'COMPLETED') {
           newPurchaseStatus.거래완료 += 1;
+        } else if (status === 'CONFIRMED') {
+          // 구매 확정된 경우도 거래완료로 카운트
+          newPurchaseStatus.거래완료 += 1;
         } else if (status === 'CANCELLED') {
           newPurchaseStatus.거래취소 += 1;
         }
@@ -275,7 +318,7 @@ export default function MyPage() {
           price: purchase.totalPrice 
             ? `${Number(purchase.totalPrice).toLocaleString()}원` 
             : '가격 정보 없음',
-          status: getStatusText(purchase.status),
+          status: getStatusText(status),
           sellerId: purchase.sellerId
         };
       });
@@ -305,6 +348,7 @@ export default function MyPage() {
       case 'PENDING': return '입금 대기중';
       case 'PROCESSING': return '처리 중';
       case 'COMPLETED': return '완료됨';
+      case 'CONFIRMED': return '구매 확정됨';
       case 'CANCELLED': return '취소됨';
       default: return '상태 불명';
     }

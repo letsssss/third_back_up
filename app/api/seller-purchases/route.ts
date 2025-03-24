@@ -48,10 +48,10 @@ export async function OPTIONS() {
   return addCorsHeaders(new NextResponse(null, { status: 200 }));
 }
 
-// GET 요청 핸들러 - 구매 목록 가져오기
+// GET 요청 핸들러 - 판매자의 상품에 대한 구매 목록 가져오기
 export async function GET(request: NextRequest) {
   try {
-    console.log("구매 목록 API 호출됨");
+    console.log("판매자 구매 목록 API 호출됨");
     
     // 현재 인증된 사용자 정보 가져오기
     const authUser = await getAuthenticatedUser(request);
@@ -64,17 +64,7 @@ export async function GET(request: NextRequest) {
       ));
     }
 
-    console.log("인증된 사용자 ID:", authUser.id);
-    
-    // 쿼리 파라미터 처리
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
-    
-    console.log("API 요청 파라미터:", { page, limit, userId: authUser.id });
-    
-    // 페이지네이션 계산
-    const skip = (page - 1) * limit;
+    console.log("인증된 판매자 ID:", authUser.id);
     
     try {
       // 개발 환경에서 DB 연결 테스트
@@ -93,10 +83,33 @@ export async function GET(request: NextRequest) {
         }
       }
       
-      // 구매 목록 조회
+      // 판매자 ID로 판매 중인 게시글 ID 목록 조회
+      const posts = await prisma.post.findMany({
+        where: {
+          authorId: authUser.id,
+          isDeleted: false
+        },
+        select: {
+          id: true
+        }
+      });
+      
+      const postIds = posts.map(post => post.id);
+      
+      if (postIds.length === 0) {
+        console.log("판매자의 게시글이 없습니다.");
+        return addCorsHeaders(NextResponse.json({
+          success: true,
+          purchases: []
+        }, { status: 200 }));
+      }
+      
+      // 판매자의 게시글에 대한 모든 구매 목록 조회
       const purchases = await prisma.purchase.findMany({
         where: {
-          buyerId: authUser.id,
+          postId: {
+            in: postIds
+          },
           status: {
             in: ['PENDING', 'COMPLETED', 'PROCESSING', 'CONFIRMED']
           }
@@ -108,39 +121,26 @@ export async function GET(request: NextRequest) {
               title: true,
               eventName: true,
               eventDate: true,
-              ticketPrice: true,
-              author: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                }
-              }
+              ticketPrice: true
+            }
+          },
+          buyer: {
+            select: {
+              id: true,
+              name: true,
+              email: true
             }
           }
         },
         orderBy: {
-          createdAt: 'desc'
-        },
-        skip,
-        take: limit
-      });
-      
-      // 총 구매 수 조회
-      const totalCount = await prisma.purchase.count({
-        where: {
-          buyerId: authUser.id,
-          status: {
-            in: ['PENDING', 'COMPLETED', 'PROCESSING', 'CONFIRMED']
-          }
+          updatedAt: 'desc'
         }
       });
       
-      console.log("조회된 총 구매 수:", totalCount);
+      console.log(`판매자 ${authUser.id}의 판매 상품에 대한 구매 ${purchases.length}개 조회됨`);
       
       // 조회 결과가 없어도 빈 배열 반환
       const safePurchasesList = purchases || [];
-      console.log(`${safePurchasesList.length}개의 구매를 찾았습니다.`);
       
       // BigInt 값을 문자열로 변환
       const serializedPurchases = convertBigIntToString(safePurchasesList);
@@ -148,14 +148,9 @@ export async function GET(request: NextRequest) {
       // 성공 응답 반환
       return addCorsHeaders(NextResponse.json({
         success: true,
-        purchases: serializedPurchases,
-        pagination: {
-          totalCount,
-          totalPages: Math.ceil(totalCount / limit),
-          currentPage: page,
-          hasMore: skip + safePurchasesList.length < totalCount
-        }
+        purchases: serializedPurchases
       }, { status: 200 }));
+      
     } catch (dbError) {
       console.error("데이터베이스 조회 오류:", dbError instanceof Error ? dbError.message : String(dbError));
       console.error("상세 오류:", dbError);
@@ -169,13 +164,13 @@ export async function GET(request: NextRequest) {
       );
     }
   } catch (error) {
-    console.error("구매 목록 조회 오류:", error instanceof Error ? error.message : String(error));
+    console.error("판매자 구매 목록 조회 오류:", error instanceof Error ? error.message : String(error));
     console.error("상세 오류 스택:", error);
     
     return addCorsHeaders(
       NextResponse.json({ 
         success: false, 
-        message: "구매 목록 조회 중 오류가 발생했습니다." 
+        message: "판매자 구매 목록 조회 중 오류가 발생했습니다." 
       }, { status: 500 })
     );
   } finally {
