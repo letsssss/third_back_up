@@ -5,7 +5,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { Search, Calendar, MapPin, Clock, ArrowRight, Star } from "lucide-react"
+import { Search, Calendar, MapPin, Clock, ArrowRight, Star, AlertCircle, RefreshCw, TicketX } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 
@@ -175,6 +175,10 @@ export default function TicketCancellationPage() {
       
       if (data.success) {
         setTickets(data.posts)
+        console.log("취켓팅 가능 티켓 로드 완료:", data.posts.length, "개 항목")
+        if (data.posts.length === 0) {
+          console.log("표시할 게시물이 없습니다 - 판매 중인 티켓이 없음")
+        }
       } else {
         setError("데이터를 불러오는데 실패했습니다.")
       }
@@ -377,20 +381,23 @@ export default function TicketCancellationPage() {
                 </div>
               ))
             ) : error ? (
-              // 에러 메시지 표시
-              <div className="col-span-4 text-center py-8">
-                <p className="text-red-500">{error}</p>
+              <div className="col-span-full text-center py-8">
+                <div className="text-red-500 mb-2">
+                  <AlertCircle className="w-12 h-12 mx-auto mb-2" />
+                  <p className="text-lg font-medium">{error}</p>
+                </div>
                 <Button onClick={fetchCancellationTickets} className="mt-4">
+                  <RefreshCw className="w-4 h-4 mr-2" />
                   다시 시도
                 </Button>
               </div>
             ) : tickets.length === 0 ? (
-              // 데이터가 없는 경우
-              <div className="col-span-4 text-center py-8">
-                <p className="text-gray-500">등록된 취켓팅 공연이 없습니다.</p>
-                <Button onClick={() => router.push('/sell')} className="mt-4">
-                  취켓팅 등록하기
-                </Button>
+              <div className="col-span-full text-center py-12">
+                <div className="text-gray-500 mb-4">
+                  <TicketX className="w-16 h-16 mx-auto mb-4" />
+                  <p className="text-xl font-medium">현재 판매 중인 티켓이 없습니다</p>
+                  <p className="text-gray-400 mt-2">나중에 다시 확인해주세요</p>
+                </div>
               </div>
             ) : (
               // 실제 티켓 데이터 표시

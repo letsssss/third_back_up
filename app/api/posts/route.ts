@@ -162,6 +162,12 @@ export async function GET(request: NextRequest) {
       isDeleted: false 
     };
     
+    // 상태가 ACTIVE인 게시물만 표시 - 판매 중인 게시물만 보이도록 함
+    // 단, 유저 프로필에서는 모든 상태의 게시물 표시 위해 userId가 있을 때는 적용하지 않음
+    if (!userId) {
+      where.status = 'ACTIVE';
+    }
+    
     // 카테고리 필터링 추가
     if (category) {
       where.category = category;
