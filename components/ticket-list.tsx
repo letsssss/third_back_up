@@ -1,7 +1,7 @@
 import type React from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Star } from "lucide-react"
+import { Star, ShoppingCart, CheckCircle } from "lucide-react"
 
 const seventeenConcertTickets = [
   {
@@ -80,8 +80,20 @@ export const TicketList: React.FC = () => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {seventeenConcertTickets.map((ticket) => (
-        <div key={ticket.id} className="border p-4 rounded-lg shadow hover:shadow-md transition-shadow">
-          <h3 className="font-bold text-lg mb-2">좌석: {ticket.seat}</h3>
+        <div 
+          key={ticket.id} 
+          className={`border p-4 rounded-lg shadow hover:shadow-md transition-shadow
+            ${ticket.status === "판매완료" ? "opacity-75 bg-gray-50" : ""}`}
+        >
+          <div className="flex justify-between items-start mb-2">
+            <h3 className="font-bold text-lg">좌석: {ticket.seat}</h3>
+            {ticket.status === "판매완료" && (
+              <span className="inline-flex items-center bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                판매완료
+              </span>
+            )}
+          </div>
           <p className="text-gray-600 mb-1">가격: {ticket.price.toLocaleString()}원</p>
           <p className="text-gray-600 mb-1">
             상태:
@@ -107,9 +119,20 @@ export const TicketList: React.FC = () => {
               </div>
             </Link>
           </div>
-          <Link href={`/ticket/${ticket.id}`}>
-            <Button className="w-full">자세히 보기</Button>
-          </Link>
+          
+          {ticket.status === "판매완료" ? (
+            <Button disabled className="w-full bg-gray-400 hover:bg-gray-400 cursor-not-allowed">
+              <CheckCircle className="w-4 h-4 mr-2" />
+              판매 완료
+            </Button>
+          ) : (
+            <Link href={`/ticket/${ticket.id}`}>
+              <Button className="w-full">
+                <ShoppingCart className="w-4 h-4 mr-2" /> 
+                구매하기
+              </Button>
+            </Link>
+          )}
         </div>
       ))}
     </div>

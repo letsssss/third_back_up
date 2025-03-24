@@ -1,33 +1,9 @@
 import { NextResponse, NextRequest } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { convertBigIntToString } from "@/lib/utils";
 
 const prisma = new PrismaClient();
-
-// BigInt를 문자열로 변환하는 함수
-function convertBigIntToString(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-  
-  if (typeof obj === 'bigint') {
-    return obj.toString();
-  }
-  
-  if (Array.isArray(obj)) {
-    return obj.map(item => convertBigIntToString(item));
-  }
-  
-  if (typeof obj === 'object') {
-    const newObj: any = {};
-    for (const key in obj) {
-      newObj[key] = convertBigIntToString(obj[key]);
-    }
-    return newObj;
-  }
-  
-  return obj;
-}
 
 // CORS 헤더 설정을 위한 함수
 function addCorsHeaders(response: NextResponse) {
@@ -149,13 +125,10 @@ export async function GET(request: NextRequest) {
       const safePurchasesList = purchases || [];
       console.log(`${safePurchasesList.length}개의 구매를 찾았습니다.`);
       
-      // BigInt 값을 문자열로 변환
-      const serializedPurchases = convertBigIntToString(safePurchasesList);
-      
       // 성공 응답 반환
       return addCorsHeaders(NextResponse.json({
         success: true,
-        purchases: serializedPurchases,
+        purchases: convertBigIntToString(safePurchasesList),
         pagination: {
           totalCount,
           totalPages: Math.ceil(totalCount / limit),

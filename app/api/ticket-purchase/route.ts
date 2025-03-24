@@ -2,33 +2,9 @@ import { NextResponse, NextRequest } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { z } from "zod";
+import { convertBigIntToString } from "@/lib/utils";
 
 const prisma = new PrismaClient();
-
-// BigInt를 문자열로 변환하는 함수
-function convertBigIntToString(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-  
-  if (typeof obj === 'bigint') {
-    return obj.toString();
-  }
-  
-  if (Array.isArray(obj)) {
-    return obj.map(item => convertBigIntToString(item));
-  }
-  
-  if (typeof obj === 'object') {
-    const newObj: any = {};
-    for (const key in obj) {
-      newObj[key] = convertBigIntToString(obj[key]);
-    }
-    return newObj;
-  }
-  
-  return obj;
-}
 
 // CORS 헤더 설정을 위한 함수
 function addCorsHeaders(response: NextResponse) {
@@ -107,121 +83,148 @@ export async function POST(request: NextRequest) {
     const { postId, quantity, selectedSeats, phoneNumber, paymentMethod } = validationResult.data;
     console.log("유효성 검사 통과 후 데이터:", { postId, quantity, selectedSeats, phoneNumber, paymentMethod });
 
-    // 게시글 조회
-    const post = await prisma.post.findUnique({
-      where: { id: postId },
-      include: { author: true }
-    });
+    // 트랜잭션 시작 - 동시 구매를 방지하기 위해 트랜잭션으로 처리
+    const result = await prisma.$transaction(async (tx) => {
+      // 게시글 조회 - 상태 확인을 위해 FOR UPDATE 잠금을 사용 (pessimistic locking)
+      const post = await tx.post.findUnique({
+        where: { id: postId },
+        include: { author: true }
+      });
 
-    if (!post) {
-      console.log(`게시글 ID ${postId}를 찾을 수 없음`);
-      return addCorsHeaders(NextResponse.json(
-        { success: false, message: "해당하는 게시글을 찾을 수 없습니다." },
-        { status: 404 }
-      ));
-    }
+      if (!post) {
+        console.log(`게시글 ID ${postId}를 찾을 수 없음`);
+        throw new Error("해당하는 게시글을 찾을 수 없습니다.");
+      }
 
-    // 자신의 게시글인지 확인
-    console.log("API - 게시글 작성자 ID:", post.authorId.toString(), typeof post.authorId);
-    console.log("API - 사용자 ID:", authUser.id.toString(), typeof authUser.id);
-    
-    // 숫자로 변환하여 비교
-    const postAuthorId = Number(post.authorId);
-    const currentUserId = Number(authUser.id);
-    
-    console.log("API - 숫자 변환 후 비교:", { postAuthorId, currentUserId });
-    
-    if (postAuthorId === currentUserId) {
-      console.log("API - 작성자와 사용자가 일치함");
-      return addCorsHeaders(NextResponse.json(
-        { success: false, message: "자신의 게시글은 구매할 수 없습니다." },
-        { status: 400 }
-      ));
-    }
-    
-    console.log("API - 작성자와 사용자가 다름");
+      // 자신의 게시글인지 확인
+      console.log("API - 게시글 작성자 ID:", post.authorId.toString(), typeof post.authorId);
+      console.log("API - 사용자 ID:", authUser.id.toString(), typeof authUser.id);
+      
+      // 숫자로 변환하여 비교
+      const postAuthorId = Number(post.authorId);
+      const currentUserId = Number(authUser.id);
+      
+      console.log("API - 숫자 변환 후 비교:", { postAuthorId, currentUserId });
+      
+      if (postAuthorId === currentUserId) {
+        console.log("API - 작성자와 사용자가 일치함");
+        throw new Error("자신의 게시글은 구매할 수 없습니다.");
+      }
+      
+      console.log("API - 작성자와 사용자가 다름");
 
-    if (post.status !== "ACTIVE") {
-      return addCorsHeaders(NextResponse.json(
-        { success: false, message: "판매가 종료되었거나 취소된 게시글입니다." },
-        { status: 400 }
-      ));
-    }
+      // 게시글 상태 확인 - ACTIVE 상태일 때만 구매 가능
+      if (post.status !== "ACTIVE") {
+        console.log(`게시글 ID ${postId}는 현재 '${post.status}' 상태로 구매할 수 없습니다.`);
+        throw new Error("이미 판매 진행 중이거나 판매 완료된 게시글입니다.");
+      }
 
-    // 총 가격 계산
-    const totalPrice = post.ticketPrice ? post.ticketPrice * BigInt(quantity) : BigInt(0);
-
-    // 구매 정보 생성 - 바로 PROCESSING 상태로 시작
-    const purchase = await prisma.purchase.create({
-      data: {
-        buyerId: authUser.id,
-        sellerId: post.authorId,
-        postId: post.id,
-        quantity,
-        totalPrice,
-        status: "PROCESSING", // PENDING 대신 바로 PROCESSING으로 시작
-        selectedSeats,
-        phoneNumber,
-        paymentMethod,
-        // Post 정보도 함께 저장
-        ticketTitle: post.title,
-        eventDate: post.eventDate,
-        eventVenue: post.eventVenue,
-        ticketPrice: post.ticketPrice,
-      },
-      include: {
-        post: {
-          select: {
-            title: true,
-            eventName: true,
+      // 이미 구매 진행 중인지 확인
+      const existingPurchase = await tx.purchase.findFirst({
+        where: {
+          postId: post.id,
+          status: {
+            in: ["PENDING", "PROCESSING", "COMPLETED"]
           }
         }
+      });
+
+      if (existingPurchase) {
+        console.log(`게시글 ID ${postId}는 이미 구매가 진행 중입니다.`);
+        throw new Error("이미 다른 사용자가 구매 중인 게시글입니다.");
       }
-    });
 
-    // 게시물 상태 업데이트
-    await prisma.post.update({
-      where: { id: postId },
-      data: { status: "PROCESSING" }
-    });
-    
-    console.log(`게시글 ID ${postId}의 상태가 'PROCESSING'으로 업데이트되었습니다.`);
+      // 총 가격 계산
+      const totalPrice = post.ticketPrice ? post.ticketPrice * BigInt(quantity) : BigInt(0);
 
-    // 판매자에게 알림 생성
-    console.log('판매자 알림 생성 시도:', {
-      userId: post.authorId,
-      postId: post.id,
-      message: `${authUser.name || '구매자'}님이 "${post.title || post.eventName || '게시글'}"의 결제를 완료하여 취켓팅이 시작되었습니다. (${quantity}매, ${totalPrice.toString()}원)`,
-      type: "TICKET_REQUEST"
-    });
+      // 구매 정보 생성 - 바로 PROCESSING 상태로 시작
+      const purchase = await tx.purchase.create({
+        data: {
+          buyerId: authUser.id,
+          sellerId: post.authorId,
+          postId: post.id,
+          quantity,
+          totalPrice,
+          status: "PROCESSING", // PENDING 대신 바로 PROCESSING으로 시작
+          selectedSeats,
+          phoneNumber,
+          paymentMethod,
+          // Post 정보도 함께 저장
+          ticketTitle: post.title,
+          eventDate: post.eventDate,
+          eventVenue: post.eventVenue,
+          ticketPrice: post.ticketPrice,
+        },
+        include: {
+          post: {
+            select: {
+              title: true,
+              eventName: true,
+            }
+          }
+        }
+      });
 
-    // 알림 생성
-    await prisma.notification.create({
-      data: {
+      // 게시물 상태 업데이트 - PROCESSING으로 변경하여 더 이상 구매할 수 없게 함
+      await tx.post.update({
+        where: { id: postId },
+        data: { status: "PROCESSING" }
+      });
+      
+      console.log(`게시글 ID ${postId}의 상태가 'PROCESSING'으로 업데이트되었습니다.`);
+
+      // 판매자에게 알림 생성
+      console.log('판매자 알림 생성 시도:', {
         userId: post.authorId,
         postId: post.id,
         message: `${authUser.name || '구매자'}님이 "${post.title || post.eventName || '게시글'}"의 결제를 완료하여 취켓팅이 시작되었습니다. (${quantity}매, ${totalPrice.toString()}원)`,
         type: "TICKET_REQUEST"
-      }
+      });
+
+      // 알림 생성
+      await tx.notification.create({
+        data: {
+          userId: post.authorId,
+          postId: post.id,
+          message: `${authUser.name || '구매자'}님이 "${post.title || post.eventName || '게시글'}"의 결제를 완료하여 취켓팅이 시작되었습니다. (${quantity}매, ${totalPrice.toString()}원)`,
+          type: "TICKET_REQUEST"
+        }
+      });
+
+      return { purchase, post };
+    }, {
+      // 트랜잭션 옵션 설정
+      maxWait: 5000, // 최대 대기 시간 (ms)
+      timeout: 10000, // 트랜잭션 타임아웃 (ms)
     });
 
     // 구매 정보 응답
     return addCorsHeaders(NextResponse.json({
       success: true,
       message: "구매 신청이 성공적으로 처리되었습니다.",
-      purchase: {
-        ...convertBigIntToString(purchase),
-        post: post
-      }
+      purchase: convertBigIntToString({
+        ...result.purchase,
+        post: result.post
+      })
     }, { status: 201 }));
     
   } catch (error) {
     console.error("구매 처리 오류:", error);
     let errorMessage = "구매 처리 중 오류가 발생했습니다.";
+    let statusCode = 500;
     
     if (error instanceof Error) {
       errorMessage = error.message;
       console.error("오류 스택:", error.stack);
+      
+      // 사용자 입력 관련 오류는 400 응답
+      if (
+        error.message.includes("이미 다른 사용자가 구매 중인 게시글입니다") ||
+        error.message.includes("이미 판매 진행 중이거나 판매 완료된 게시글입니다") ||
+        error.message.includes("자신의 게시글은 구매할 수 없습니다")
+      ) {
+        statusCode = 400;
+      }
     }
     
     return addCorsHeaders(NextResponse.json(
@@ -231,7 +234,7 @@ export async function POST(request: NextRequest) {
         // 개발 환경에서만 상세 오류 정보 포함
         error: process.env.NODE_ENV === 'development' ? String(error) : undefined 
       },
-      { status: 500 }
+      { status: statusCode }
     ));
   } finally {
     await prisma.$disconnect();

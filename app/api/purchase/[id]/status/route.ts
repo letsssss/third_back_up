@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import prisma from "@/lib/prisma"; // 싱글톤 인스턴스 사용
+import { convertBigIntToString } from "@/lib/utils";
 
 // CORS 헤더 설정을 위한 함수
 function addCorsHeaders(response: NextResponse) {
@@ -19,31 +20,6 @@ function addCorsHeaders(response: NextResponse) {
 // OPTIONS 메서드 처리
 export async function OPTIONS() {
   return addCorsHeaders(new NextResponse(null, { status: 200 }));
-}
-
-// BigInt를 문자열로 변환하는 함수
-function convertBigIntToString(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-  
-  if (typeof obj === 'bigint') {
-    return obj.toString();
-  }
-  
-  if (Array.isArray(obj)) {
-    return obj.map(item => convertBigIntToString(item));
-  }
-  
-  if (typeof obj === 'object') {
-    const newObj: any = {};
-    for (const key in obj) {
-      newObj[key] = convertBigIntToString(obj[key]);
-    }
-    return newObj;
-  }
-  
-  return obj;
 }
 
 // 상태 업데이트 함수: PATCH 요청 처리
@@ -155,38 +131,57 @@ export async function PATCH(
         ));
       }
       
-      // 상태 업데이트
-      const updatedPurchase = await prisma.purchase.update({
-        where: { id: purchaseId },
-        data: { 
-          status,
-          updatedAt: new Date() 
-        },
-        include: {
-          post: {
-            select: {
-              id: true,
-              title: true,
-              eventName: true,
-              eventDate: true,
-              ticketPrice: true,
-            }
+      // 트랜잭션으로 처리 - 구매 확정 시 게시물 상태도 함께 업데이트
+      const updatedPurchase = await prisma.$transaction(async (tx) => {
+        // 구매 정보 업데이트
+        const purchase = await tx.purchase.update({
+          where: { id: purchaseId },
+          data: { 
+            status,
+            updatedAt: new Date() 
           },
-          buyer: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            }
-          },
-          seller: {
-            select: {
-              id: true,
-              name: true, 
-              email: true,
+          include: {
+            post: {
+              select: {
+                id: true,
+                title: true,
+                eventName: true,
+                eventDate: true,
+                ticketPrice: true,
+              }
+            },
+            buyer: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              }
+            },
+            seller: {
+              select: {
+                id: true,
+                name: true, 
+                email: true,
+              }
             }
           }
+        });
+        
+        // 구매 확정 시 게시물 상태를 SOLD로 변경
+        if (status === 'CONFIRMED' && purchase.postId) {
+          console.log(`구매 확정: 게시물 ID ${purchase.postId}의 상태를 'SOLD'로 업데이트합니다.`);
+          
+          await tx.post.update({
+            where: { 
+              id: purchase.postId 
+            },
+            data: { 
+              status: 'SOLD' 
+            }
+          });
         }
+        
+        return purchase;
       });
       
       // 알림 생성
@@ -220,14 +215,11 @@ export async function PATCH(
         });
       }
       
-      // BigInt 값을 문자열로 변환
-      const serializedPurchase = convertBigIntToString(updatedPurchase);
-      
       // 성공 응답 반환
       return addCorsHeaders(NextResponse.json({
         success: true,
         message: "거래 상태가 성공적으로 업데이트되었습니다.",
-        purchase: serializedPurchase
+        purchase: convertBigIntToString(updatedPurchase)
       }, { status: 200 }));
       
     } catch (dbError) {

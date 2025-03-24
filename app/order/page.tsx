@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { ArrowLeft, Minus, Plus } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,6 +36,7 @@ export default function OrderPage() {
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
     // 실제 구현에서는 여기서 API를 호출하여 티켓 정보를 가져와야 합니다.
@@ -49,10 +51,49 @@ export default function OrderPage() {
     setQuantity((prev) => Math.max(1, prev + change))
   }
 
-  const handlePayment = () => {
-    // 여기에서 실제 결제 처리 로직을 구현해야 합니다.
-    // 지금은 단순히 성공 페이지로 리다이렉트합니다.
-    router.push("/order/success")
+  const handlePayment = async () => {
+    if (!ticketData || !isFormValid) return;
+    
+    setIsLoading(true);
+    
+    try {
+      // API에 전송할 데이터 (BigInt를 문자열로 변환)
+      const postData = {
+        postId: parseInt(ticketId || "1"),
+        quantity: quantity,
+        selectedSeats: `${ticketData.artist} 콘서트 좌석`,
+        phoneNumber: phone,
+        paymentMethod: "BANK_TRANSFER"
+      };
+      
+      // 티켓 구매 API 호출
+      const response = await fetch('/api/ticket-purchase', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(postData),
+        credentials: 'include', // 쿠키 포함
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        console.error('구매 요청 실패:', result);
+        throw new Error(result.message || '티켓 구매에 실패했습니다.');
+      }
+      
+      console.log('구매 성공:', result);
+      toast.success('결제가 성공적으로 완료되었습니다!');
+      
+      // 성공 페이지로 리다이렉트
+      router.push("/order/success");
+    } catch (error) {
+      console.error('결제 처리 오류:', error);
+      toast.error(error instanceof Error ? error.message : '결제 처리 중 오류가 발생했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   const isFormValid = name && phone && email && agreedToTerms
@@ -189,10 +230,10 @@ export default function OrderPage() {
 
         <Button
           className="w-full bg-[#FFD600] hover:bg-[#FFE600] text-black"
-          disabled={!isFormValid}
+          disabled={!isFormValid || isLoading}
           onClick={handlePayment}
         >
-          {totalPrice.toLocaleString()}원 결제하기
+          {isLoading ? '처리 중...' : `${totalPrice.toLocaleString()}원 결제하기`}
         </Button>
       </main>
     </div>

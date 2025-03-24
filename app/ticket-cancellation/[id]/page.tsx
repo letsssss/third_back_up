@@ -298,10 +298,12 @@ export default function TicketCancellationDetail() {
             phoneNumber: phoneNumber,
             paymentMethod: '계좌이체'
           }),
+          credentials: 'include', // 쿠키 포함 (인증 정보)
         });
 
         if (!response.ok) {
           const errorData = await response.json();
+          console.error("구매 요청 실패:", errorData);
           throw new Error(errorData.message || '구매 요청 중 오류가 발생했습니다.');
         }
 
