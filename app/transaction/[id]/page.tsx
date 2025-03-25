@@ -69,6 +69,9 @@ export default function TransactionDetail() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentUserRole, setCurrentUserRole] = useState<'buyer' | 'seller'>('buyer')
   
+  // 데이터 가져오기 오류 관련 상태 추가
+  const [fetchError, setFetchError] = useState<{status: number; message: string} | null>(null)
+  
   // confetti 관련 상태 추가
   const [showConfetti, setShowConfetti] = useState(false)
   const [windowSize, setWindowSize] = useState({ width: 0, height: 0 })
@@ -191,11 +194,12 @@ export default function TransactionDetail() {
           // 응답이 성공적이지 않은 경우
           if (!response.ok) {
             let errorMessage = '거래 정보를 가져오는데 실패했습니다';
+            let errorStatus = response.status;
+            
             // HTML 응답인지 확인
             if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
               console.error('API가 HTML을 반환했습니다. 서버 오류가 발생했을 수 있습니다.');
               errorMessage = 'API 서버 오류: HTML 응답을 받았습니다.';
-              throw new Error(`API 오류 (${response.status}): ${errorMessage}`);
             } else {
               try {
                 // JSON으로 파싱 시도
@@ -207,7 +211,10 @@ export default function TransactionDetail() {
             }
             
             console.error('API 응답 오류:', response.status, errorMessage);
-            throw new Error(`API 오류 (${response.status}): ${errorMessage}`);
+            // 오류 상태 저장
+            setFetchError({status: errorStatus, message: errorMessage});
+            setIsLoading(false);
+            return;
           }
           
           // 응답 데이터 파싱
@@ -335,23 +342,30 @@ export default function TransactionDetail() {
             });
             setChatReady(true);
           }
+          
+          // 중요: 로딩 상태 해제
+          setIsLoading(false);
         } catch (error) {
           console.error('거래 정보 로딩 오류:', error);
-          toast({
-            title: '거래 정보 로딩 실패',
-            description: '거래 정보를 가져오는데 문제가 발생했습니다. 새로고침을 시도해주세요.',
-            variant: 'destructive',
-          });
-        } finally {
+          // 오류 메시지에서 상태 코드 추출 시도
+          let errorStatus = 500;
+          let errorMessage = '거래 정보를 가져오는데 문제가 발생했습니다.';
+          
+          if (error instanceof Error) {
+            const statusMatch = error.message.match(/API 오류 \((\d+)\)/);
+            if (statusMatch && statusMatch[1]) {
+              errorStatus = parseInt(statusMatch[1]);
+            }
+            errorMessage = error.message;
+          }
+          
+          setFetchError({status: errorStatus, message: errorMessage});
           setIsLoading(false);
         }
       } catch (error) {
         console.error('거래 정보 로딩 오류:', error);
-        toast({
-          title: '거래 정보 로딩 실패',
-          description: '거래 정보를 가져오는데 문제가 발생했습니다. 새로고침을 시도해주세요.',
-          variant: 'destructive',
-        });
+        setFetchError({status: 500, message: '거래 정보를 가져오는데 문제가 발생했습니다.'});
+        setIsLoading(false);
       }
     };
     
@@ -608,11 +622,90 @@ export default function TransactionDetail() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">거래 정보를 불러오는 중...</p>
+          <p className="text-lg">거래 정보를 불러오는 중입니다...</p>
+          <p className="text-sm text-gray-500 mt-2">ID: {params?.id}</p>
+          <div className="mt-4 animate-spin w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+          <Button 
+            onClick={() => window.location.reload()} 
+            className="mt-6"
+          >
+            페이지 새로고침
+          </Button>
         </div>
       </div>
     )
+  }
+  
+  // 거래 정보를 찾을 수 없는 경우(404 오류) 전용 오류 페이지 표시
+  if (fetchError && (fetchError.status === 404 || fetchError.message.includes("찾을 수 없습니다"))) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full text-center">
+          <div className="flex justify-center mb-6">
+            <Image 
+              src="/not-found.svg" 
+              alt="거래를 찾을 수 없음" 
+              width={150} 
+              height={150} 
+            />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">거래를 찾을 수 없습니다</h1>
+          <p className="text-gray-600 mb-6">
+            요청하신 거래 정보가 존재하지 않거나 접근할 수 없습니다. 
+            올바른 거래 정보인지 확인해주세요.
+          </p>
+          <div className="flex flex-col space-y-3">
+            <Button 
+              onClick={() => router.push('/mypage')} 
+              className="w-full bg-primary hover:bg-primary-dark"
+            >
+              마이페이지로 이동
+            </Button>
+            <Button 
+              onClick={() => router.push('/')} 
+              variant="outline" 
+              className="w-full"
+            >
+              홈으로 돌아가기
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // 그 외 일반 오류의 경우
+  if (fetchError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full text-center">
+          <div className="text-red-500 mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">오류가 발생했습니다</h1>
+          <p className="text-gray-600 mb-6">
+            {fetchError.message}
+          </p>
+          <div className="flex flex-col space-y-3">
+            <Button 
+              onClick={() => window.location.reload()} 
+              className="w-full bg-primary hover:bg-primary-dark"
+            >
+              새로고침
+            </Button>
+            <Button 
+              onClick={() => router.push('/mypage')} 
+              variant="outline" 
+              className="w-full"
+            >
+              마이페이지로 이동
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
