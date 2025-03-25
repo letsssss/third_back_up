@@ -231,7 +231,7 @@ export default function MyPage() {
         return {
           id: post.id,
           title: post.title || post.eventName || "제목 없음",
-          date: post.eventDate || new Date(post.createdAt).toLocaleDateString(),
+          date: formatDate(post.eventDate, post.createdAt),
           price: post.ticketPrice 
             ? `${Number(post.ticketPrice).toLocaleString()}원` 
             : '가격 정보 없음',
@@ -314,7 +314,7 @@ export default function MyPage() {
         return {
           id: purchase.id,
           title: purchase.ticketTitle || purchase.post?.title || purchase.post?.eventName || "제목 없음",
-          date: purchase.eventDate || purchase.post?.eventDate || new Date(purchase.createdAt).toLocaleDateString(),
+          date: formatDate(purchase.eventDate, purchase.post?.eventDate, purchase.createdAt),
           price: purchase.totalPrice 
             ? `${Number(purchase.totalPrice).toLocaleString()}원` 
             : '가격 정보 없음',
@@ -358,6 +358,27 @@ export default function MyPage() {
       case 'CANCELLED': return '취소됨';
       default: return '상태 불명';
     }
+  };
+
+  // 날짜 형식화 함수 추가
+  const formatDate = (...dates: (string | undefined)[]): string => {
+    // 유효한 날짜 찾기
+    for (const date of dates) {
+      if (!date) continue;
+      
+      try {
+        const parsedDate = new Date(date);
+        // 날짜가 유효한지 확인
+        if (!isNaN(parsedDate.getTime())) {
+          return parsedDate.toLocaleDateString();
+        }
+      } catch (e) {
+        console.error("날짜 변환 오류:", e);
+      }
+    }
+    
+    // 유효한 날짜가 없는 경우 기본값 반환
+    return "날짜 정보 없음";
   };
 
   // 알림 목록 가져오기

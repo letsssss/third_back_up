@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" fill="none">
+  <rect width="200" height="200" fill="white"/>
+  <path d="M100 30C61.3401 30 30 61.3401 30 100C30 138.66 61.3401 170 100 170C138.66 170 170 138.66 170 100C170 61.3401 138.66 30 100 30Z" stroke="#6B7280" stroke-width="8"/>
+  <path d="M135.355 64.6447L64.6447 135.355" stroke="#FF5252" stroke-width="8" stroke-linecap="round"/>
+  <path d="M64.6447 64.6447L135.355 135.355" stroke="#FF5252" stroke-width="8" stroke-linecap="round"/>
+  <text x="100" y="190" font-family="Arial, sans-serif" font-size="16" fill="#4B5563" text-anchor="middle">페이지를 찾을 수 없습니다</text>
+</svg> 
