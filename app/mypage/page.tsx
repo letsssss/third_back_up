@@ -35,6 +35,8 @@ interface Sale {
   date: string;
   price: string;
   status: string;
+  isActive: boolean;
+  sortPriority: number;
 }
 
 // 알림 타입 정의
@@ -59,6 +61,8 @@ export default function MyPage() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [showOnlyActive, setShowOnlyActive] = useState(false)
+  const [originalSales, setOriginalSales] = useState<Sale[]>([])
 
   // 트랜잭션 상태 카운트
   const [purchaseStatus, setPurchaseStatus] = useState<TransactionStatus>({
@@ -189,6 +193,9 @@ export default function MyPage() {
         // 상태에 따른 텍스트 표시
         let statusText = "판매중";
         
+        // 디버깅을 위한 로그 추가
+        console.log(`게시글 ID ${post.id}의 상태: postStatus=${postStatus}, purchaseStatus=${purchaseStatus}`);
+        
         // 구매 상태가 CONFIRMED인 경우 거래완료로 표시
         if (purchaseStatus === 'CONFIRMED') {
           statusText = "거래완료";
@@ -208,24 +215,51 @@ export default function MyPage() {
         if (purchaseStatus === 'CONFIRMED') {
           // 구매 확정된 경우 거래완료로 카운트
           newSaleStatus.거래완료 += 1;
-        } else if (postStatus === 'ACTIVE') {
-          // 글이 활성 상태(판매중)이면 '판매중인상품'으로 카운트
+          console.log(`[카운트] 게시글 ID ${post.id}: 거래완료 (+1)`);
+        } else if (postStatus === 'ACTIVE' || postStatus === '' || postStatus === undefined || postStatus === null) {
+          // 글이 활성 상태(판매중)이거나 상태가 지정되지 않은 경우 '판매중인상품'으로 카운트
+          // 이것이 "판매 가능한"(아직 안팔린) 상품을 의미합니다
           newSaleStatus.판매중인상품 += 1;
+          console.log(`[카운트] 게시글 ID ${post.id}: 판매중인상품 (+1) - 판매 가능한 상품`);
         } else if (postStatus === 'PENDING' || postStatus === 'PENDING_PAYMENT') {
           // 누군가 구매 신청을 했거나 결제 대기 중이면 '취켓팅진행중'으로 카운트
           newSaleStatus.취켓팅진행중 += 1;
+          console.log(`[카운트] 게시글 ID ${post.id}: 취켓팅진행중 (+1)`);
         } else if (postStatus === 'PROCESSING') {
           // 처리 중인 경우 '취켓팅진행중'으로 카운트
           newSaleStatus.취켓팅진행중 += 1;
+          console.log(`[카운트] 게시글 ID ${post.id}: 취켓팅진행중 (+1)`);
         } else if (postStatus === 'COMPLETED') {
           // 취켓팅 완료된 경우
           newSaleStatus.취켓팅완료 += 1;
+          console.log(`[카운트] 게시글 ID ${post.id}: 취켓팅완료 (+1)`);
         } else if (postStatus === 'CONFIRMED') {
           // 구매 확정된 경우도 거래완료로 카운트
           newSaleStatus.거래완료 += 1;
+          console.log(`[카운트] 게시글 ID ${post.id}: 거래완료 (+1)`);
         } else if (postStatus === 'CANCELLED') {
           // 거래가 취소된 경우
           newSaleStatus.거래취소 += 1;
+          console.log(`[카운트] 게시글 ID ${post.id}: 거래취소 (+1)`);
+        } else {
+          // 기타 상태는 일단 판매중으로 간주
+          console.log(`[카운트] 알 수 없는 상태의 게시글: ${post.id}, status=${postStatus}`);
+          newSaleStatus.판매중인상품 += 1;
+          console.log(`[카운트] 게시글 ID ${post.id}: 판매중인상품(기본) (+1)`);
+        }
+        
+        // 정렬을 위한 우선순위 부여
+        let sortPriority = 0;
+        if (statusText === "취켓팅 진행중") {
+          sortPriority = 1;  // 가장 높은 우선순위
+        } else if (statusText === "판매중") {
+          sortPriority = 2;  // 두 번째 우선순위
+        } else if (statusText === "취켓팅 완료") {
+          sortPriority = 3;  // 세 번째 우선순위
+        } else if (statusText === "거래완료") {
+          sortPriority = 4;  // 네 번째 우선순위
+        } else if (statusText === "거래취소") {
+          sortPriority = 5;  // 가장 낮은 우선순위
         }
         
         return {
@@ -235,23 +269,32 @@ export default function MyPage() {
           price: post.ticketPrice 
             ? `${Number(post.ticketPrice).toLocaleString()}원` 
             : '가격 정보 없음',
-          status: statusText
+          status: statusText,
+          isActive: postStatus === 'ACTIVE' || postStatus === '' || postStatus === undefined || postStatus === null,
+          sortPriority: sortPriority  // 정렬용 우선순위 필드 추가
         };
       });
+      
+      // 상태에 따라 정렬 - 취켓팅 진행중인 상품이 먼저 오도록
+      const sortedSalesData = [...salesData].sort((a, b) => a.sortPriority - b.sortPriority);
       
       // 상태 업데이트
       setSaleStatus(newSaleStatus);
         
       console.log("변환된 판매 데이터:", salesData);
+      console.log("정렬된 판매 데이터:", sortedSalesData);
       console.log("판매 상태별 카운트:", newSaleStatus);
-      setOngoingSales(salesData);
+      console.log(`전체 상품 수: ${salesData.length}`);
+      console.log(`판매 가능한 상품(ACTIVE) 수: ${newSaleStatus.판매중인상품}`);
+      setOriginalSales(sortedSalesData);
+      setOngoingSales(sortedSalesData);
     } catch (error) {
       console.error('판매 목록 로딩 오류:', error);
       toast.error('판매 목록을 불러오는데 실패했습니다.');
       // 더미 데이터로 대체
       setOngoingSales([
-        { id: 1, title: "아이브 팬미팅 [더미 데이터]", date: "2024-04-05", price: "88,000원", status: "판매중" },
-        { id: 2, title: "웃는 남자 [더미 데이터]", date: "2024-01-09", price: "110,000원", status: "구매자 입금 대기중" },
+        { id: 2, title: "웃는 남자 [더미 데이터]", date: "2024-01-09", price: "110,000원", status: "취켓팅 진행중", isActive: false, sortPriority: 1 },
+        { id: 1, title: "아이브 팬미팅 [더미 데이터]", date: "2024-04-05", price: "88,000원", status: "판매중", isActive: true, sortPriority: 2 },
       ]);
     } finally {
       setIsLoadingSales(false);
@@ -551,6 +594,24 @@ export default function MyPage() {
     }
   };
 
+  // 필터링 함수 추가
+  const filterActiveSales = () => {
+    setShowOnlyActive(!showOnlyActive);
+    
+    if (!showOnlyActive) {
+      // 활성화 상품만 필터링 - 상태가 명시적으로 "판매중"이고 isActive가 true인 경우만 표시
+      const filtered = originalSales.filter(item => 
+        item.isActive && item.status === "판매중"
+      );
+      console.log("필터링된 판매중 상품:", filtered.length);
+      setOngoingSales(filtered);
+    } else {
+      // 필터 해제
+      setOngoingSales(originalSales);
+      console.log("전체 상품으로 복원:", originalSales.length);
+    }
+  };
+
   // 로딩 중이거나 마운트되지 않은 경우 로딩 표시
   if (!mounted || isLoading) {
     return (
@@ -787,7 +848,19 @@ export default function MyPage() {
 
             {activeTab === "ongoing-sales" && (
               <div>
-                <h2 className="text-xl font-semibold mb-4">판매중인 상품</h2>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold">판매중인 상품</h2>
+                  <button
+                    onClick={filterActiveSales}
+                    className={`px-3 py-1 rounded text-sm flex items-center ${
+                      showOnlyActive 
+                        ? "bg-blue-500 text-white" 
+                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    }`}
+                  >
+                    {showOnlyActive ? "전체 상품 보기" : "판매 가능한 상품만 보기 (" + saleStatus.판매중인상품 + ")"}
+                  </button>
+                </div>
                 {isLoadingSales ? (
                   <div className="text-center py-8"><Loader size={30} /></div>
                 ) : ongoingSales.length === 0 ? (
@@ -802,13 +875,34 @@ export default function MyPage() {
                   </div>
                 ) : (
                   ongoingSales.map((item) => (
-                    <div key={item.id} className="border-b py-4 last:border-b-0">
-                      <h3 className="font-medium">{item.title}</h3>
+                    <div 
+                      key={item.id} 
+                      className="border-b py-4 last:border-b-0"
+                    >
+                      <div className="flex justify-between mb-1">
+                        <h3 className="font-medium">{item.title}</h3>
+                        {item.status === "취켓팅 진행중" && (
+                          <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
+                            취켓팅 진행중
+                          </span>
+                        )}
+                        {item.isActive && item.status === "판매중" && (
+                          <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">
+                            판매 가능
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-gray-600">{item.date}</p>
                       <p className="text-sm font-semibold">
                         {item.price}
                       </p>
-                      <p className="text-sm text-green-600">{item.status}</p>
+                      <p className={`text-sm ${
+                        item.status === "판매중" ? "text-green-600" : 
+                        item.status.includes("취켓팅 진행중") ? "text-blue-600 font-medium" : 
+                        item.status.includes("취켓팅") ? "text-blue-600" : 
+                        item.status === "거래완료" ? "text-purple-600" : 
+                        item.status === "거래취소" ? "text-red-600" : "text-gray-600"
+                      }`}>{item.status}</p>
                       <div className="flex mt-2 justify-between items-center">
                         <Link href={`/seller/transaction/${item.id}`}>
                           <Button className="text-sm" variant="outline">
