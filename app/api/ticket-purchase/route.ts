@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { z } from "zod";
 import { convertBigIntToString } from "@/lib/utils";
+import { createUniqueOrderNumber } from "@/utils/orderNumber";
 
 const prisma = new PrismaClient();
 
@@ -136,10 +137,15 @@ export async function POST(request: NextRequest) {
 
       // 총 가격 계산
       const totalPrice = post.ticketPrice ? post.ticketPrice * BigInt(quantity) : BigInt(0);
+      
+      // 주문 번호 생성
+      const orderNumber = await createUniqueOrderNumber(tx);
+      console.log("생성된 주문 번호:", orderNumber);
 
       // 구매 정보 생성 - 바로 PROCESSING 상태로 시작
       const purchase = await tx.purchase.create({
         data: {
+          orderNumber,
           buyerId: authUser.id,
           sellerId: post.authorId,
           postId: post.id,

@@ -119,6 +119,60 @@ export async function GET(req: Request) {
         console.log('조회된 알림 수:', notifications.length);
         console.log('원본 알림 데이터:', notifications);
 
+        // 날짜를 상대적 시간으로 포맷팅하는 함수
+        const formatDateToRelative = (dateStr: string): string => {
+          try {
+            if (!dateStr) return "방금 전";
+
+            // Date 객체 생성
+            const date = new Date(dateStr);
+            
+            // 유효하지 않은 날짜인 경우
+            if (isNaN(date.getTime())) {
+              return "방금 전";
+            }
+            
+            const now = new Date();
+            
+            // 미래 시간인 경우 - 서버/클라이언트 시간 차이를 고려해 10분까지는 허용
+            if (date > now) {
+              const diffMs = date.getTime() - now.getTime();
+              if (diffMs <= 10 * 60 * 1000) { // 10분 이내
+                return "방금 전";
+              }
+              // 심각한 미래 시간인 경우 
+              return "최근";
+            }
+            
+            // 시간 차이 계산
+            const diffMs = now.getTime() - date.getTime();
+            const seconds = Math.floor(diffMs / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+            
+            // 상대적 시간 표시
+            if (days > 30) {
+              // 절대 날짜 형식으로 표시 (1달 이상 지난 경우)
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              return `${year}.${month}.${day}`;
+            } else if (days > 0) {
+              return `${days}일 전`;
+            } else if (hours > 0) {
+              return `${hours}시간 전`;
+            } else if (minutes > 0) {
+              return `${minutes}분 전`;
+            } else {
+              return "방금 전";
+            }
+          } catch (error) {
+            console.error("날짜 변환 오류:", error);
+            return "방금 전";
+          }
+        };
+
         const formattedNotifications = notifications.map(notification => ({
           id: notification.id,
           title: notification.type === 'TICKET_REQUEST' 
@@ -131,6 +185,7 @@ export async function GET(req: Request) {
           isRead: notification.isRead,
           createdAt: notification.createdAt,
           type: notification.type,
+          formattedDate: formatDateToRelative(notification.createdAt.toString())
         }));
 
         console.log('포맷된 알림 데이터:', formattedNotifications);
