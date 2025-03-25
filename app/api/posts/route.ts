@@ -100,6 +100,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       ));
     }
+    
+    // productNumber 생성 및 중복 검사
+    const productNumber = await generateUniqueProductNumber();
+    console.log("생성된 productNumber:", productNumber);
 
     // 글 저장
     const post = await prisma.post.create({
@@ -113,6 +117,7 @@ export async function POST(request: NextRequest) {
         eventVenue: body.eventVenue,
         ticketPrice: body.ticketPrice && body.ticketPrice > 0 ? BigInt(Math.min(body.ticketPrice, Number.MAX_SAFE_INTEGER)) : null,
         contactInfo: body.contactInfo,
+        productNumber: productNumber, // 생성된 productNumber 저장
       }
     });
 
@@ -140,6 +145,50 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// 12자리 랜덤 숫자 생성 함수
+function generateRandomProductNumber(): string {
+  // 12자리 랜덤 숫자 생성
+  let result = '';
+  // 첫 번째 자리는 0이 아닌 숫자로 시작하도록 함
+  result += Math.floor(Math.random() * 9) + 1;
+  // 나머지 11자리는 0-9 사이의 숫자
+  for (let i = 0; i < 11; i++) {
+    result += Math.floor(Math.random() * 10);
+  }
+  return result;
+}
+
+// 중복 검사를 통해 유니크한 productNumber 생성
+async function generateUniqueProductNumber(): Promise<string> {
+  // 최대 10번까지 시도
+  const maxAttempts = 10;
+  let attempts = 0;
+  
+  while (attempts < maxAttempts) {
+    attempts++;
+    const productNumber = generateRandomProductNumber();
+    
+    // 중복 검사
+    const existingPost = await prisma.post.findFirst({
+      where: {
+        productNumber: productNumber as any, // 타입 오류 우회
+      }
+    });
+    
+    // 중복이 없으면 해당 번호 반환
+    if (!existingPost) {
+      return productNumber;
+    }
+    
+    console.log(`productNumber ${productNumber} 중복 발견. 재시도 (${attempts}/${maxAttempts})...`);
+  }
+  
+  // 최대 시도 횟수를 초과하면 타임스탬프를 추가하여 유니크한 값 생성
+  const timestamp = Date.now().toString().slice(-5);
+  const randomPart = generateRandomProductNumber().slice(0, 7);
+  return randomPart + timestamp;
+}
+
 // GET 요청 핸들러 - 글 목록 가져오기
 export async function GET(request: NextRequest) {
   try {
@@ -152,8 +201,9 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category') || undefined;
     const userId = searchParams.get('userId');
     const searchQuery = searchParams.get('search') || '';
+    const productNumber = searchParams.get('productNumber') || undefined;
     
-    console.log("API 요청 파라미터:", { page, limit, category, userId, searchQuery });
+    console.log("API 요청 파라미터:", { page, limit, category, userId, searchQuery, productNumber });
     
     // 페이지네이션 계산
     const skip = (page - 1) * limit;
@@ -162,6 +212,14 @@ export async function GET(request: NextRequest) {
     const where: any = { 
       isDeleted: false 
     };
+    
+    // 특정 productNumber로 검색
+    if (productNumber) {
+      // TypeScript 오류 우회를 위해 any 타입 사용
+      // Prisma 타입 정의에 productNumber가 아직 반영되지 않았습니다
+      where.productNumber = productNumber as any;
+      console.log(`productNumber로 필터링: ${productNumber}`);
+    }
     
     // 상태가 ACTIVE인 게시물만 표시 - 판매 중인 게시물만 보이도록 함
     // 단, 유저 프로필에서는 모든 상태의 게시물 표시 위해 userId가 있을 때는 적용하지 않음

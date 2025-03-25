@@ -31,6 +31,7 @@ interface Post {
   eventDate: string;
   eventVenue: string;
   ticketPrice: number;
+  productNumber: string;
   createdAt: string;
   author: {
     id: string;
@@ -413,7 +414,7 @@ export default function TicketCancellationPage() {
                   className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-all transform hover:-translate-y-1"
                 >
                   <div className="relative">
-                    <Link href={`/ticket-cancellation/${ticket.id}`}>
+                    <Link href={`/ticket-cancellation/${ticket.productNumber || ticket.id}`}>
                       <Image
                         src={"/placeholder.svg"}
                         alt={ticket.title}
@@ -422,6 +423,7 @@ export default function TicketCancellationPage() {
                         className="w-full h-48 object-cover"
                       />
                     </Link>
+                    
                     <div className="absolute top-3 right-3">
                       <div className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors border-transparent bg-green-500 text-white hover:bg-green-600">
                         성공률 98%
@@ -434,7 +436,7 @@ export default function TicketCancellationPage() {
                     </div>
                   </div>
                   <div className="p-4">
-                    <Link href={`/ticket-cancellation/${ticket.id}`}>
+                    <Link href={`/ticket-cancellation/${ticket.productNumber || ticket.id}`}>
                       <h3 className="text-lg font-semibold mb-2 line-clamp-1">{ticket.title}</h3>
                     </Link>
                     <p className="text-gray-600 mb-2">{ticket.eventName}</p>
@@ -467,7 +469,7 @@ export default function TicketCancellationPage() {
                       </div>
                       <Button
                         className="bg-[#0061FF] hover:bg-[#0052D6]"
-                        onClick={() => router.push(`/ticket-cancellation/${ticket.id}`)}
+                        onClick={() => router.push(`/ticket-cancellation/${ticket.productNumber || ticket.id}`)}
                       >
                         신청하기
                         <ArrowRight className="ml-1 h-4 w-4" />

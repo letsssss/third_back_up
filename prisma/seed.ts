@@ -121,6 +121,7 @@ async function main() {
         eventDate: '2025-05-15',
         eventVenue: '올림픽 체조경기장',
         ticketPrice: BigInt(150000),
+        orderNumber: 'ORD-' + Date.now(),
       },
     });
 

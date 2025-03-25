@@ -33,6 +33,7 @@ model Post {
   title         String
   content       String
   category      String         @default("GENERAL")
+  productNumber String?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   authorId      Int

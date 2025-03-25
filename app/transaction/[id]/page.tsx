@@ -116,10 +116,10 @@ export default function TransactionDetail() {
         content,
         buyerId: currentUserId,
         sellerId: currentUserRole === 'buyer' ? transaction?.seller?.id : transaction?.buyer?.id,
-        transactionId: params?.id
+        transactionId: params?.id // 이제 orderNumber를 참조
       });
       
-      // 직접 sendMessage 함수 호출
+      // 직접 sendMessage's 함수 호출
       const result = await sendMessage(content);
       console.log('메시지 전송 결과:', result);
       
@@ -151,26 +151,26 @@ export default function TransactionDetail() {
       try {
         setIsLoading(true);
         
-        // 거래 ID 가져오기 (useParams 사용)
-        const id = params?.id as string; 
+        // 거래 orderNumber 가져오기 (useParams 사용)
+        const orderNumber = params?.id as string; 
         
-        // ID가 없는 경우 오류 처리
-        if (!id) {
+        // orderNumber가 없는 경우 오류 처리
+        if (!orderNumber) {
           toast({
-            title: '거래 ID가 없음',
-            description: '유효한 거래 ID를 찾을 수 없습니다.',
+            title: '주문번호가 없음',
+            description: '유효한 주문번호를 찾을 수 없습니다.',
             variant: 'destructive',
           });
           setIsLoading(false);
           return;
         }
         
-        console.log('거래 정보 가져오기 요청 ID:', id);
+        console.log('거래 정보 가져오기 요청 주문번호:', orderNumber);
         
         // 거래 정보 가져오기 (오류 처리 개선)
-        console.log(`API 요청 시작: /api/purchase/${id}`);
+        console.log(`API 요청 시작: /api/purchase/${orderNumber}`);
         try {
-          const response = await fetch(`/api/purchase/${id}`, {
+          const response = await fetch(`/api/purchase/${orderNumber}`, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
@@ -333,7 +333,7 @@ export default function TransactionDetail() {
           // ✅ 구매자와 판매자 ID가 모두 존재할 때만 채팅 준비
           if (purchaseData.purchase.buyer?.id && purchaseData.purchase.seller?.id) {
             setChatProps({
-              transactionId: id,
+              transactionId: orderNumber,
               userId,
               userRole,
               otherUserId: userRole === 'buyer' 
@@ -419,81 +419,6 @@ export default function TransactionDetail() {
     }
   }
 
-  // 상태 변경 함수 추가
-  const handleStatusChange = async (newStatus: string) => {
-    if (!transaction || !params?.id || isSubmitting) return;
-    
-    try {
-      setIsSubmitting(true);
-      console.log(`상태 변경 요청: ${newStatus}, 거래 ID: ${params.id}`);
-      
-      // API 호출
-      const response = await fetch(`/api/purchase/${params.id}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache'
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      
-      console.log('상태 변경 API 응답 상태:', response.status, response.statusText);
-      
-      if (!response.ok) {
-        let errorMessage = '상태 변경에 실패했습니다';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch (e) {
-          console.error('오류 응답을 JSON으로 파싱할 수 없음:', e);
-        }
-        
-        console.error('상태 변경 API 오류:', response.status, errorMessage);
-        throw new Error(`API 오류 (${response.status}): ${errorMessage}`);
-      }
-      
-      const data = await response.json();
-      console.log('상태 변경 성공:', data);
-      
-      // CONFIRMED 상태로 변경 성공했을 때 confetti 표시 (브라우저 환경에서만)
-      if (newStatus === 'CONFIRMED' && isBrowser) {
-        setConfettiRunning(true)
-        setShowConfetti(true)
-        
-        // 성공 메시지 강조 표시
-        toast({
-          title: '🎉 구매 확정 완료!',
-          description: '거래가 성공적으로 완료되었습니다. 이용해주셔서 감사합니다!',
-          variant: 'default',
-          duration: 5000,
-        });
-        
-        // 5초 후에 confetti 제거
-        setTimeout(() => {
-          setShowConfetti(false)
-        }, 5000)
-      } else {
-        // 다른 상태에 대한 일반 성공 메시지
-        toast({
-          title: '상태 변경 성공',
-          description: data.message || '거래 상태가 업데이트되었습니다.',
-        });
-      }
-      
-      // 페이지 새로고침
-      window.location.reload();
-    } catch (error) {
-      console.error('상태 변경 오류:', error);
-      toast({
-        title: '상태 변경 실패',
-        description: error instanceof Error ? error.message : '상태 변경 중 오류가 발생했습니다.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   // 거래 단계 정의 - 결제 완료부터 구매 확정까지의 모든 단계 표시
   const transactionSteps = [
     {
@@ -557,57 +482,130 @@ export default function TransactionDetail() {
       handleStatusChange('CONFIRMED');
     } else if (transaction?.currentStep === "CONFIRMED") {
       // 이미 확정된 경우 리뷰 작성 페이지로 이동
-      router.push(`/review/${transaction.id}?role=${currentUserRole}`)
+      router.push(`/review/${transaction?.id}?role=${currentUserRole}`)
     }
   }
-
-  // 구매 확정 요청 함수 - 알림만 보내고 상태는 변경하지 않음
-  const handleConfirmationRequest = async () => {
-    if (!transaction || !params?.id || isSubmitting) return;
-    
+  
+  // 상태 변경 함수
+  const handleStatusChange = async (newStatus: string) => {
     try {
-      setIsSubmitting(true);
-      console.log(`구매 확정 요청 알림 전송: 거래 ID: ${params.id}`);
+      // 이미 제출 중인 경우 중복 요청 방지
+      if (isSubmitting) return;
       
-      // API 호출 (알림만 보냄)
-      const response = await fetch(`/api/purchase/${params.id}/confirmation-request`, {
+      // 거래 ID 가져오기
+      const orderNumber = params?.id as string;
+      if (!orderNumber) {
+        toast({
+          title: "오류",
+          description: "주문번호를 찾을 수 없습니다.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setIsSubmitting(true);
+      
+      // API 요청
+      console.log(`상태 변경 API 요청: ${orderNumber}, 새 상태: ${newStatus}`);
+      const response = await fetch(`/api/purchase/${orderNumber}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      
+      // 응답 처리
+      const data = await response.json();
+      
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || '상태 업데이트 중 오류가 발생했습니다.');
+      }
+      
+      console.log('상태 변경 성공:', data);
+      
+      // 상태 업데이트 성공 알림
+      let successMessage = "거래 상태가 변경되었습니다.";
+      
+      switch (newStatus) {
+        case 'PROCESSING':
+          successMessage = "취켓팅이 시작되었습니다!";
+          break;
+        case 'COMPLETED':
+          successMessage = "취켓팅이 완료되었습니다!";
+          break;
+        case 'CONFIRMED':
+          successMessage = "구매가 확정되었습니다! 이용해 주셔서 감사합니다.";
+          // 구매 확정 시 Confetti 효과 표시
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 5000);
+          break;
+      }
+      
+      toast({
+        title: "성공",
+        description: successMessage,
+      });
+      
+      // 거래 정보 새로고침
+      window.location.reload();
+      
+    } catch (error) {
+      console.error('상태 변경 오류:', error);
+      toast({
+        title: "오류",
+        description: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.',
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  // 확인 요청
+  const handleConfirmationRequest = async () => {
+    try {
+      if (isSubmitting) return;
+      
+      // 거래 ID 가져오기
+      const orderNumber = params?.id as string;
+      if (!orderNumber) {
+        toast({
+          title: "오류",
+          description: "주문번호를 찾을 수 없습니다.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setIsSubmitting(true);
+      
+      // API 요청
+      const response = await fetch(`/api/purchase/${orderNumber}/confirmation-request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache'
         }
       });
       
-      console.log('구매 확정 요청 API 응답 상태:', response.status, response.statusText);
+      const data = await response.json();
       
-      if (!response.ok) {
-        let errorMessage = '구매 확정 요청 알림 전송에 실패했습니다';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch (e) {
-          console.error('오류 응답을 JSON으로 파싱할 수 없음:', e);
-        }
-        
-        console.error('구매 확정 요청 API 오류:', response.status, errorMessage);
-        throw new Error(`API 오류 (${response.status}): ${errorMessage}`);
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || '확인 요청 중 오류가 발생했습니다.');
       }
       
-      const data = await response.json();
-      console.log('구매 확정 요청 알림 전송 성공:', data);
-      
-      // 성공 메시지 표시
+      // 성공 알림
       toast({
-        title: '구매 확정 요청 완료',
-        description: data.message || '구매자에게 구매 확정 요청 알림이 전송되었습니다.',
+        title: "성공",
+        description: "판매자에게 확인 요청이 전송되었습니다.",
       });
       
     } catch (error) {
-      console.error('구매 확정 요청 오류:', error);
+      console.error('확인 요청 오류:', error);
       toast({
-        title: '구매 확정 요청 실패',
-        description: error instanceof Error ? error.message : '구매 확정 요청 중 오류가 발생했습니다.',
-        variant: 'destructive',
+        title: "오류",
+        description: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.',
+        variant: "destructive",
       });
     } finally {
       setIsSubmitting(false);
