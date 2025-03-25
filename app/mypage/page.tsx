@@ -788,7 +788,7 @@ export default function MyPage() {
                         {item.price}
                       </p>
                       <p className="text-sm text-green-600">{item.status}</p>
-                      <div className="flex mt-2 space-x-2">
+                      <div className="flex mt-2 justify-between items-center">
                         <Link href={`/seller/transaction/${item.id}`}>
                           <Button className="text-sm" variant="outline">
                             거래 상세
@@ -796,12 +796,11 @@ export default function MyPage() {
                         </Link>
                         <AlertDialog>
                           <AlertDialogTrigger>
-                            <Button 
-                              className="text-sm bg-red-500 hover:bg-red-600 text-white"
-                              type="button"
+                            <div 
+                              className="text-sm bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded cursor-pointer inline-flex items-center justify-center font-medium"
                             >
                               삭제
-                            </Button>
+                            </div>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
