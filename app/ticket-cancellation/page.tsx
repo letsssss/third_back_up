@@ -192,6 +192,12 @@ export default function TicketCancellationPage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!searchQuery.trim()) {
+      toast("검색어를 입력해주세요", {
+        description: "검색어를 입력하고 다시 시도해주세요.",
+      })
+      return
+    }
     router.push(`/search?query=${encodeURIComponent(searchQuery)}`)
   }
 

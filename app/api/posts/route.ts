@@ -151,8 +151,9 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const category = searchParams.get('category') || undefined;
     const userId = searchParams.get('userId');
+    const searchQuery = searchParams.get('search') || '';
     
-    console.log("API 요청 파라미터:", { page, limit, category, userId });
+    console.log("API 요청 파라미터:", { page, limit, category, userId, searchQuery });
     
     // 페이지네이션 계산
     const skip = (page - 1) * limit;
@@ -177,6 +178,17 @@ export async function GET(request: NextRequest) {
     // 특정 사용자의 게시글만 필터링
     if (userId) {
       where.authorId = parseInt(userId);
+    }
+    
+    // 검색어 필터링 추가
+    if (searchQuery && searchQuery.trim() !== '') {
+      where.OR = [
+        { title: { contains: searchQuery } },
+        { eventName: { contains: searchQuery } },
+        { content: { contains: searchQuery } },
+        { eventVenue: { contains: searchQuery } }
+      ];
+      console.log(`검색어로 필터링: ${searchQuery}`);
     }
     
     console.log("적용된 where 조건:", where);
